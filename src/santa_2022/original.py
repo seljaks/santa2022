@@ -9,6 +9,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+import datetime
+import logging
+
 
 # Functions to map between cartesian coordinates and array indexes
 def cartesian_to_array(x, y, shape):
@@ -97,7 +100,7 @@ def get_neighbors(config):
         reduce(lambda x, y: rotate(x, *y), enumerate(directions), config)
         for directions in product((-1, 0, 1), repeat=len(config))
     )
-    return filter(lambda c: c != config, nhbrs)
+    return list(filter(lambda c: c != config, nhbrs))
 
 
 def get_neighbors_positions_costs(config, image):
@@ -105,17 +108,7 @@ def get_neighbors_positions_costs(config, image):
                     map(get_position, get_neighbors(config)),
                     starmap(partial(step_cost, image=image),
                             zip(repeat(config), get_neighbors(config)))
-                   ))
-
-
-def get_reachable_positions(neighbors):
-    """Get configs that reach unique points"""
-    reachable_positions = set()
-    for move in neighbors:
-        pos = get_position(move)
-        if pos not in reachable_positions:
-            reachable_positions.add(pos)
-    return reachable_positions
+                    ))
 
 
 # Functions to compute the cost function
@@ -124,7 +117,8 @@ def get_reachable_positions(neighbors):
 def reconfiguration_cost(from_config, to_config):
     # diffs = np.abs(np.asarray(from_config) - np.asarray(to_config)).sum(axis=1)
     # return np.sqrt(diffs.sum())
-    return sqrt(sum(abs(x0-x1) + abs(y0-y1) for (x0, y0), (x1, y1) in zip(from_config, to_config)))
+    return sqrt(sum(abs(x0 - x1) + abs(y0 - y1) for (x0, y0), (x1, y1) in
+                    zip(from_config, to_config)))
 
 
 # Cost of moving from one color to another: the sum of the absolute change in color components
@@ -144,8 +138,8 @@ def step_cost(from_config, to_config, image):
     from_position = cartesian_to_array(*get_position(from_config), image.shape)
     to_position = cartesian_to_array(*get_position(to_config), image.shape)
     return (
-        reconfiguration_cost(from_config, to_config) +
-        color_cost(from_position, to_position, image)
+            reconfiguration_cost(from_config, to_config) +
+            color_cost(from_position, to_position, image)
     )
 
 
@@ -176,9 +170,10 @@ def get_path_to_point(config, point):
         link = config[i]
         base = get_position(config[:i])
         relbase = (point[0] - base[0], point[1] - base[1])
-        position = get_position(config[:i+1])
+        position = get_position(config[:i + 1])
         relpos = (point[0] - position[0], point[1] - position[1])
-        radius = reduce(lambda r, link: r + max(abs(link[0]), abs(link[1])), config[i+1:], 0)
+        radius = reduce(lambda r, link: r + max(abs(link[0]), abs(link[1])),
+                        config[i + 1:], 0)
         # Special case when next-to-last link lands on point.
         if radius == 1 and relpos == (0, 0):
             config = rotate(config, i, 1)
@@ -194,9 +189,10 @@ def get_path_to_point(config, point):
             link = config[i]
             base = get_position(config[:i])
             relbase = (point[0] - base[0], point[1] - base[1])
-            position = get_position(config[:i+1])
+            position = get_position(config[:i + 1])
             relpos = (point[0] - position[0], point[1] - position[1])
-            radius = reduce(lambda r, link: r + max(abs(link[0]), abs(link[1])), config[i+1:], 0)
+            radius = reduce(lambda r, link: r + max(abs(link[0]), abs(link[1])),
+                            config[i + 1:], 0)
     assert get_position(path[-1]) == point
     return path
 
@@ -221,33 +217,93 @@ def total_cost(path, image):
     )
 
 
-def sorting_func(point):
-    assert len(point) == 2
-    x, y = point
-    r = max(abs(x), abs(y))
-    angle = get_angle((1, 0), (x, y))
-    if angle < 0:
-        angle = 180.0 + (180.0 + angle)
-    return r, angle
-
-
 def config_to_string(config):
     return ';'.join([' '.join(map(str, vector)) for vector in config])
 
 
+# my stuff
+def get_reachable_positions(neighbors):
+    """Get configs that reach unique points"""
+    reachable_positions = set()
+    for move in neighbors:
+        pos = get_position(move)
+        if pos not in reachable_positions:
+            reachable_positions.add(pos)
+    return reachable_positions
+
+
 def get_unvisited_neighbors(config, unvisited):
-    return filter(lambda c: get_position(c) in unvisited, get_neighbors(config))
+    nhbrs = (
+        reduce(lambda x, y: rotate(x, *y), enumerate(directions), config)
+        for directions in product((-1, 0, 1), repeat=len(config))
+    )
+    return list(filter(lambda c: c != config and get_position(c) in unvisited, nhbrs))
 
 
-def get_cheapest_unvisited_neighbor(config, unvisited, cost):
-    candidates = get_unvisited_neighbors(config, unvisited)
-    return min(zip(candidates,
-                   starmap(cost, zip(repeat(config), candidates))
-                   ), key=lambda x: x[-1])[0]
+def get_all_cheapest_neighbors(config, image):
+    neighbors = get_neighbors(config)
+    cheapest = min(step_cost(config, c, image) for c in neighbors)
+    return list(c for c in neighbors if step_cost(config, c, image) == cheapest)
+
+
+def get_all_cheapest_unvisited_neighbors(config, unvisited, image):
+    neighbors = get_unvisited_neighbors(config, unvisited)
+    if len(neighbors) == 0:
+        return list(), None
+    cheapest = min(step_cost(config, c, image) for c in neighbors)
+    return list(
+        c for c in neighbors if step_cost(config, c, image) == cheapest), cheapest
+
+
+def get_cheapest_next_unvisited_config(config, unvisited, image):
+    """Goes two levels deep to break ties."""
+    neighbors, cost = get_all_cheapest_unvisited_neighbors(config,
+                                                           unvisited,
+                                                           image)
+    no_candidates = len(neighbors)
+    if no_candidates == 0:
+        return None
+    elif no_candidates == 1:
+        return neighbors[0]
+    else:
+        minimum = 1000.  # bigger than any possible step cost
+        min_idx = 0
+        for i, candidate in enumerate(neighbors):
+            _, cand_cost = get_all_cheapest_unvisited_neighbors(candidate,
+                                                                unvisited,
+                                                                image)
+            if cand_cost < minimum:
+                minimum = cand_cost
+                min_idx = i
+        return neighbors[min_idx]
+
+
+def get_visited_neighbor_with_cheapest_unvisited(config, unvisited, image):
+    neighbors = get_neighbors(config)
+    minimum = 1000.  # bigger than any possible step cost
+    min_idx = None
+    unvis_candidate = None
+    for i, neigh in enumerate(neighbors):
+        unvis, cost_to_unvisited = get_all_cheapest_unvisited_neighbors(neigh,
+                                                                        unvisited,
+                                                                        image)
+        if cost_to_unvisited is None:
+            continue
+        else:
+            cost_to_neighbor = step_cost(config, neigh, image)
+            combined_cost = cost_to_neighbor + cost_to_unvisited
+            if combined_cost < minimum:
+                minimum = combined_cost
+                min_idx = i
+                unvis_candidate = unvis[0].copy()
+
+    if min_idx is None:
+        return None
+    return neighbors[min_idx], unvis_candidate
 
 
 def l1_dist(other, position):
-    return abs(abs(other[0]-position[0]) + abs(other[1]-position[1]))
+    return abs(abs(other[0] - position[0]) + abs(other[1] - position[1]))
 
 
 def get_cheapest_farthest_neighbor(config, image):
@@ -291,13 +347,18 @@ def sliced_image(config, image):
     bottom_right = cartesian_to_array(*(n, -n), image.shape)
 
     sliced = image[
-                   top_left[0]:bottom_right[0]+1, top_left[1]:bottom_right[1]+1, :]
+             top_left[0]:bottom_right[0] + 1, top_left[1]:bottom_right[1] + 1, :]
     return sliced
 
 
 def main(number_of_links=8):
-    data_dir = Path('data')
-    df_image = pd.read_csv(data_dir / 'image.csv')
+    logging.basicConfig(filename=f"../../logging/{datetime.datetime.now()}.log",
+                        filemode='a',
+                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=logging.DEBUG)
+
+    df_image = pd.read_csv("../../data/image.csv")
 
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
     image = df_to_image(df_image)
@@ -314,36 +375,43 @@ def main(number_of_links=8):
     points = list(product(range(-n, n + 1), repeat=2))
     unvisited = set(points)
 
-    step_cost_partial = partial(step_cost, image=image)
-
     path = [origin]
     unvisited.remove(get_position(origin))
-    for _ in tqdm(points[:-1]):
+    for i in tqdm(range(len(points) - 1)):
         config = path[-1]
-        try:
-            next_config = get_cheapest_unvisited_neighbor(config, unvisited, step_cost_partial)
+        next_config = get_cheapest_next_unvisited_config(config, unvisited,
+                                                         image)
+        if next_config is None:  # there are no unvisited neighbors
+            two_steps = get_visited_neighbor_with_cheapest_unvisited(config, unvisited,
+                                                                     image)
+            if two_steps is None:  # there are no unvisited two steps away
+                closest_unvisited = get_closest_unvisited(config, unvisited)
+                path_extension = get_path_to_point(config, closest_unvisited)[1:]
+                logging.debug(f"{i} took slow path for {len(path_extension)} steps")
+                path.extend(path_extension)
+            else:  # there is an unvisited two steps away
+                logging.debug(f"{i} two_steps, {two_steps}")
+                path.extend(two_steps)
+        else:
+            logging.debug(f"{i} found cheapest unvisited")
             path.append(next_config)
-        except ValueError:
-            closest_unvisited = get_closest_unvisited(config, unvisited)
-            path_extension = get_path_to_point(config, closest_unvisited)
-            path.extend(path_extension)
 
+        logging.debug(f"latest config visits {get_position(path[-1])}")
         unvisited.remove(get_position(path[-1]))
 
     assert unvisited == set()
 
-    print(f"path length before going to origin: {len(path)}")
+    logging.debug(f"path length before going to origin: {len(path)}")
     path.extend(get_path_to_configuration(path[-1], origin)[1:])
     assert path[0] == path[-1]
-    with open(f"output/web_renders/test_path.json", "w") as file:
-        file.write(json.dumps(path))
+    logging.debug(f"path length after going to origin: {len(path)}")
 
-    print(f"path length after going to origin: {len(path)}")
+    with open(f"../../output/web_renders/path{datetime.datetime.now()}.json",
+              "w") as file:
+        file.write(json.dumps(path))
 
 
 TEST = True
 if __name__ == "__main__":
     if TEST:
-        main(number_of_links=8)
-
-
+        main(number_of_links=6)

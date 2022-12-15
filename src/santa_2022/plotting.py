@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from main import *
+from santa_2022.original import *
 
 
 def plot_configuration(config, image=None, ax=None, color='0.25', **figure_args):
