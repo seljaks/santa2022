@@ -103,14 +103,6 @@ def get_neighbors(config):
     return list(filter(lambda c: c != config, nhbrs))
 
 
-def get_neighbors_positions_costs(config, image):
-    return list(zip(get_neighbors(config),
-                    map(get_position, get_neighbors(config)),
-                    starmap(partial(step_cost, image=image),
-                            zip(repeat(config), get_neighbors(config)))
-                    ))
-
-
 # Functions to compute the cost function
 
 # Cost of reconfiguring the robotic arm: the square root of the number of links rotated
@@ -222,6 +214,14 @@ def config_to_string(config):
 
 
 # my stuff
+def get_neighbors_positions_costs(config, image):
+    return list(zip(get_neighbors(config),
+                    map(get_position, get_neighbors(config)),
+                    starmap(partial(step_cost, image=image),
+                            zip(repeat(config), get_neighbors(config)))
+                    ))
+
+
 def get_reachable_positions(neighbors):
     """Get configs that reach unique points"""
     reachable_positions = set()
@@ -326,8 +326,6 @@ def get_closest_unvisited(config, unvisited):
 
 
 def get_cheapest_farther_neighbor_towards_unvisited(config, image, unvisited):
-    position = get_position(config)
-
     closest_unvisited = get_closest_unvisited(config, unvisited)
     l1_dist_partial = partial(l1_dist, position=closest_unvisited)
 
@@ -414,4 +412,4 @@ def main(number_of_links=8):
 TEST = True
 if __name__ == "__main__":
     if TEST:
-        main(number_of_links=6)
+        main(number_of_links=8)

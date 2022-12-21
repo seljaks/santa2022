@@ -66,3 +66,28 @@ def plot_neighbors(config):
     ax.grid(True, color='0.5')
     ax.set_title(f"Neighbors of {config}", fontsize=20)
     return ax
+
+
+def plot_path(path):
+    config = path[0]
+    point = get_position(config)
+    k = 2 ** (len(config) - 1) + 1
+    colors = plt.cm.plasma(np.linspace(0, 1, len(path)))
+
+    fig, ax = plt.subplots(figsize=(10, 11))
+    for i, c in enumerate(path):
+        prev_point = point
+        point = get_position(c)
+        ax.plot(point[0]-0.5, point[1]-0.5, '.', color="k", zorder=11)
+        ax.arrow(prev_point[0]-0.49, prev_point[1]-0.49, point[0]-prev_point[0], point[1]-prev_point[1],
+                 width=0.0025, zorder=10, alpha=0.8, head_width=0.1, length_includes_head=True, color=colors[i])
+    point = get_position(config)
+    ax.plot(point[0]-0.5, point[1]-0.5, 'o', color='C3', zorder=11)
+    ax.set_xlim(-k-1, k)
+    ax.set_ylim(-k-1, k)
+    ax.set_aspect('equal')
+    ax.set_xticks(np.arange(-k, k+1))
+    ax.set_yticks(np.arange(-k, k+1))
+    ax.grid(True, color='0.5')
+    ax.set_title(f"Plot of path", fontsize=20)
+    return ax
