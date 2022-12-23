@@ -152,6 +152,23 @@ def get_angle(u, v):
     ))
 
 
+def compress_path(path):
+    r = [[] for _ in range(8)]
+    for p in path:
+        for i in range(8):
+            if len(r[i]) == 0 or r[i][-1] != p[i]:
+                r[i].append(p[i])
+    mx = max([len(x) for x in r])
+
+    for rr in r:
+        while len(rr) < mx:
+            rr.append(rr[-1])
+    r = list(zip(*r))
+    for i in range(len(r)):
+        r[i] = list(r[i])
+    return r
+
+
 def get_path_to_point(config, point):
     """Find a path of configurations to `point` starting at `config`."""
     path = [config]
@@ -185,6 +202,7 @@ def get_path_to_point(config, point):
             relpos = (point[0] - position[0], point[1] - position[1])
             radius = reduce(lambda r, link: r + max(abs(link[0]), abs(link[1])),
                             config[i + 1:], 0)
+    path = compress_path(path)
     assert get_position(path[-1]) == point
     return path
 
@@ -196,6 +214,7 @@ def get_path_to_configuration(from_config, to_config):
         for i in range(len(config)):
             config = rotate(config, i, get_direction(config[i], to_config[i]))
         path.append(config)
+    path = compress_path(path)
     assert path[-1] == to_config
     return path
 
