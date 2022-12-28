@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 from santa_2022.original import *
 
 
