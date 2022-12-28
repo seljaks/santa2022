@@ -230,6 +230,12 @@ def config_to_string(config):
     return ';'.join([' '.join(map(str, vector)) for vector in config])
 
 
+def string_to_config(row_string):
+    a = (pair.split() for pair in row_string.split(";"))
+    b = ([int(x), int(y)] for (x, y) in a)
+    return list(b)
+
+
 # plotting
 def plot_path_over_image(config, arrows, save_path=None, image=None, ax=None,
                          **figure_args):
@@ -262,8 +268,8 @@ def plot_path_over_image(config, arrows, save_path=None, image=None, ax=None,
     l = k - 1 + 0.5
     if image is not None:
         ax.matshow(image, extent=[-l, l, -l, l])
-    ax.set_xlim(-l-1, l+1)
-    ax.set_ylim(-l-1, l+1)
+    ax.set_xlim(-l - 1, l + 1)
+    ax.set_ylim(-l - 1, l + 1)
     ax.set_aspect('equal')
     if save_path:
         plt.savefig(save_path,
@@ -457,9 +463,9 @@ def main(number_of_links=8):
     arrows.write(f'x,y,dx,dy,path_type\n')
 
     df_image = pd.read_csv("../../data/image.csv")
+    image = df_to_image(df_image)
 
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
-    image = df_to_image(df_image)
 
     # setup if testing behavior on smaller version of image
     if number_of_links != len(origin):
@@ -485,7 +491,7 @@ def main(number_of_links=8):
         unvisited_rotations = get_unvisited(one_two_rotations, unvisited)
 
         below_candidates = list(
-            filter(lambda c: get_position(c) == below, unvisited_rotations))
+            filter(lambda x: get_position(x) == below, unvisited_rotations))
 
         if below_candidates:
             logging.info(f"{i}: {config=} moved down")
@@ -550,6 +556,10 @@ def main(number_of_links=8):
 
     submission.close()
     arrows.close()
+
+    df = pd.read_csv(f'../../output/submissions/{now}.csv').astype("string")
+    path = [string_to_config(row) for row in df['configuration']]
+    print(f'Total cost: {total_cost(path, image)}')
 
     arrcsv = pd.read_csv(f'../../output/arrows/{now}.csv')
     plot_path_over_image(origin, arrcsv, save_path=f'../../output/images/{now}.png',
