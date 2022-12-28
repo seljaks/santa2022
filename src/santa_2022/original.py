@@ -1,13 +1,11 @@
 from functools import *
 from itertools import *
-from pathlib import Path
 from math import sqrt
-
-import json
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 import datetime
 import logging
@@ -153,9 +151,9 @@ def get_angle(u, v):
 
 
 def compress_path(path):
-    r = [[] for _ in range(8)]
+    r = [[] for _ in range(len(path[0]))]
     for p in path:
-        for i in range(8):
+        for i in range(len(path[0])):
             if len(r[i]) == 0 or r[i][-1] != p[i]:
                 r[i].append(p[i])
     mx = max([len(x) for x in r])
@@ -232,12 +230,59 @@ def config_to_string(config):
     return ';'.join([' '.join(map(str, vector)) for vector in config])
 
 
+# plotting
+def plot_path_over_image(config, arrows, save_path=None, image=None, ax=None,
+                         **figure_args):
+    if ax is None:
+        _, ax = plt.subplots(figsize=(8, 8), **figure_args)
+
+    k = 2 ** (len(config) - 1) + 1
+    x = arrows.loc[:, 'x'].to_numpy()
+    y = arrows.loc[:, 'y'].to_numpy()
+    dx = arrows.loc[:, 'dx'].to_numpy()
+    dy = arrows.loc[:, 'dy'].to_numpy()
+
+    replace_dict = {
+        'down': 'b',
+        'cheapest': 'g',
+        'slow': 'r',
+    }
+
+    color = arrows.loc[:, 'path_type']
+    color = color.replace(replace_dict)
+    # color = color.apply(mcolors.to_rgb)
+    color = color.to_numpy()
+    ax.quiver(
+        x, y, dx, dy,
+        color=color,
+        angles='xy', scale_units='xy', scale=1,
+        alpha=0.5,
+        width=0.0005,
+    )
+    l = k - 1 + 0.5
+    if image is not None:
+        ax.matshow(image, extent=[-l, l, -l, l])
+    ax.set_xlim(-l-1, l+1)
+    ax.set_ylim(-l-1, l+1)
+    ax.set_aspect('equal')
+    if save_path:
+        plt.savefig(save_path,
+                    dpi=1000,
+                    # bbox_inches='tight',
+                    # pad_inches=0.,
+                    )
+    else:
+        plt.show()
+    return ax
+
+
 # my stuff
 def get_neighbors_positions_costs(config, image):
-    return list(zip(get_neighbors(config),
-                    map(get_position, get_neighbors(config)),
+    neighbors = get_neighbors(config)
+    return list(zip(neighbors,
+                    map(get_position, neighbors),
                     starmap(partial(step_cost, image=image),
-                            zip(repeat(config), get_neighbors(config)))
+                            zip(repeat(config), neighbors))
                     ))
 
 
@@ -357,6 +402,35 @@ def get_cheapest_farther_neighbor_towards_unvisited(config, image, unvisited):
         return min(candidates, key=lambda x: x[-1])[0]
 
 
+def get_below(config):
+    x, y = get_position(config)
+    return x, y - 1
+
+
+def rotate_n_links(config, link_idxs, directions):
+    config = config.copy()
+    assert len(link_idxs) == len(directions)
+    for i, direction in zip(link_idxs, directions):
+        config[i] = rotate_link(config[i], direction)
+    return config
+
+
+def get_n_link_rotations(config, n):
+    rotations = []
+    for comb in combinations(range(len(config)), r=n):
+        for direction in product((-1, 1), repeat=n):
+            rotations.append(rotate_n_links(config, comb, direction))
+    return rotations
+
+
+def get_one_two_link_neighbors(config):
+    return get_n_link_rotations(config, 1) + get_n_link_rotations(config, 2)
+
+
+def get_unvisited(neighbors, unvisited):
+    return list(filter(lambda c: get_position(c) in unvisited, neighbors))
+
+
 def sliced_image(config, image):
     n = config[0][0] * 2
 
@@ -369,11 +443,18 @@ def sliced_image(config, image):
 
 
 def main(number_of_links=8):
-    logging.basicConfig(filename=f"../../logging/{datetime.datetime.now()}.log",
+    now = datetime.datetime.now()
+    logging.basicConfig(filename=f"../../logging/{now}.log",
                         filemode='a',
                         format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                         datefmt='%H:%M:%S',
                         level=logging.DEBUG)
+
+    submission = open(f'../../output/submissions/{now}.csv', 'a')
+    submission.write(f'configuration\n')
+
+    arrows = open(f'../../output/arrows/{now}.csv', 'a')
+    arrows.write(f'x,y,dx,dy,path_type\n')
 
     df_image = pd.read_csv("../../data/image.csv")
 
@@ -393,42 +474,87 @@ def main(number_of_links=8):
     unvisited = set(points)
 
     path = [origin]
+    submission.write(f'{config_to_string(origin)}\n')
+
     unvisited.remove(get_position(origin))
     for i in tqdm(range(len(points) - 1)):
         config = path[-1]
-        next_config = get_cheapest_next_unvisited_config(config, unvisited,
-                                                         image)
-        if next_config is None:  # there are no unvisited neighbors
-            two_steps = get_visited_neighbor_with_cheapest_unvisited(config, unvisited,
-                                                                     image)
-            if two_steps is None:  # there are no unvisited two steps away
-                closest_unvisited = get_closest_unvisited(config, unvisited)
-                path_extension = get_path_to_point(config, closest_unvisited)[1:]
-                logging.debug(f"{i} took slow path for {len(path_extension)} steps")
-                path.extend(path_extension)
-            else:  # there is an unvisited two steps away
-                logging.debug(f"{i} two_steps, {two_steps}")
-                path.extend(two_steps)
-        else:
-            logging.debug(f"{i} found cheapest unvisited")
-            path.append(next_config)
+        below = get_below(config)
 
-        logging.debug(f"latest config visits {get_position(path[-1])}")
+        one_two_rotations = get_one_two_link_neighbors(config)
+        unvisited_rotations = get_unvisited(one_two_rotations, unvisited)
+
+        below_candidates = list(
+            filter(lambda c: get_position(c) == below, unvisited_rotations))
+
+        if below_candidates:
+            logging.info(f"{i}: {config=} moved down")
+            next_config = min(below_candidates,
+                              key=lambda x: step_cost(config, x, image))
+            path.append(next_config)
+            submission.write(f'{config_to_string(next_config)}\n')
+            x, y = get_position(config)
+            u, v = get_position(next_config)
+            dx = u - x
+            dy = v - y
+            arrows.write(f'{x},{y},{dx},{dy},down\n')
+
+        elif unvisited_rotations:
+            next_config = min(unvisited_rotations,
+                              key=lambda x: step_cost(config, x, image))
+            logging.info(f"{i} {config=} moved cheapest")
+            path.append(next_config)
+            submission.write(f'{config_to_string(next_config)}\n')
+            x, y = get_position(config)
+            u, v = get_position(next_config)
+            dx = u - x
+            dy = v - y
+            arrows.write(f'{x},{y},{dx},{dy},cheapest\n')
+
+        else:
+            closest_unvisited = get_closest_unvisited(config, unvisited)
+            path_extension = get_path_to_point(config, closest_unvisited)[1:]
+            path.extend(path_extension)
+            logging.info(f"{i} {config=} moved slow")
+
+            prev = config.copy()
+            for c in path_extension:
+                submission.write(f'{config_to_string(c)}\n')
+                x, y = get_position(prev)
+                u, v = get_position(c)
+                dx = u - x
+                dy = v - y
+                arrows.write(f'{x},{y},{dx},{dy},slow\n')
+                prev = c
+
+        logging.info(f"{i}: visited {get_position(path[-1])}")
         unvisited.remove(get_position(path[-1]))
 
     assert unvisited == set()
 
     logging.debug(f"path length before going to origin: {len(path)}")
-    path.extend(get_path_to_configuration(path[-1], origin)[1:])
+    path_extension = get_path_to_configuration(path[-1], origin)[1:]
+    prev = path[-1].copy()
+    for c in path_extension:
+        submission.write(f'{config_to_string(c)}\n')
+        x, y = get_position(prev)
+        u, v = get_position(c)
+        dx = u - x
+        dy = v - y
+        arrows.write(f'{x},{y},{dx},{dy},slow\n')
+        prev = c
+
+    path.extend(path_extension)
     assert path[0] == path[-1]
     logging.debug(f"path length after going to origin: {len(path)}")
 
-    with open(f"../../output/web_renders/path{datetime.datetime.now()}.json",
-              "w") as file:
-        file.write(json.dumps(path))
+    submission.close()
+    arrows.close()
+
+    arrcsv = pd.read_csv(f'../../output/arrows/{now}.csv')
+    plot_path_over_image(origin, arrcsv, save_path=f'../../output/images/{now}.png',
+                         image=image)
 
 
-TEST = True
 if __name__ == "__main__":
-    if TEST:
-        main(number_of_links=8)
+    main(number_of_links=8)

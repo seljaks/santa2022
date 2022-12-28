@@ -5,10 +5,6 @@ import pandas as pd
 from santa_2022.plotting import *
 
 
-def _to_hex(s):
-    return '#' + s[2:]
-
-
 def plot_path_over_image(config, arrows, save_path=None, image=None, ax=None,
                          **figure_args):
     if ax is None:
@@ -19,8 +15,16 @@ def plot_path_over_image(config, arrows, save_path=None, image=None, ax=None,
     y = arrows.loc[:, 'y'].to_numpy()
     dx = arrows.loc[:, 'dx'].to_numpy()
     dy = arrows.loc[:, 'dy'].to_numpy()
-    color = arrows.loc[:, 'color'].apply(_to_hex)
-    color = color.apply(mcolors.to_rgb)
+
+    replace_dict = {
+        'down': 'b',
+        'cheapest': 'g',
+        'slow': 'r',
+    }
+
+    color = arrows.loc[:, 'path_type']
+    color = color.replace(replace_dict)
+    # color = color.apply(mcolors.to_rgb)
     color = color.to_numpy()
     ax.quiver(
         x, y, dx, dy,
