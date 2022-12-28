@@ -1,5 +1,3 @@
-import numpy as np
-import pandas as pd
 import pytest
 from santa_2022.original import *
 

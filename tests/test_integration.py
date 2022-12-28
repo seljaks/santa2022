@@ -1,5 +1,3 @@
-import numpy as np
-
 from santa_2022.original import *
 from santa_2022.array import *
 
