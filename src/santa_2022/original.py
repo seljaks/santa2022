@@ -178,6 +178,11 @@ def get_right(config):
     return x + 1, y
 
 
+def get_diagonal(config):
+    x, y = get_position(config)
+    return x - 1, y - 1
+
+
 def rotate_n_links(config, link_idxs, directions):
     config = config.copy()
     assert len(link_idxs) == len(directions)
@@ -254,7 +259,7 @@ def main(number_of_links=8):
         config = path[-1]
         x, y = get_position(config)
 
-        nearby = get_below(config)
+        nearby = get_diagonal(config)
 
         one_two_rotations = get_one_two_link_neighbors(config)
         unvisited_rotations = get_unvisited(one_two_rotations, unvisited)
