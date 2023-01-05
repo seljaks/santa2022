@@ -1,4 +1,4 @@
-from santa_2022.original import *
+from santa_2022.common import *
 
 
 def plot_configuration(config, image=None, ax=None, color='0.25', **figure_args):

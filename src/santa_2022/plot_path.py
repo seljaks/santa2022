@@ -1,27 +1,33 @@
 from santa_2022.plotting import *
+from santa_2022.post_processing import plot_path_over_image
 
 
-def plot_path_over_image(config, arrows, save_path=None, image=None, ax=None,
+def plot_path_over_image(info_df, save_path=None, image=None, ax=None,
                          **figure_args):
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 8), **figure_args)
 
-    k = 2 ** (len(config) - 1) + 1
-    x = arrows.loc[:, 'x'].to_numpy()
-    y = arrows.loc[:, 'y'].to_numpy()
-    dx = arrows.loc[:, 'dx'].to_numpy()
-    dy = arrows.loc[:, 'dy'].to_numpy()
+    k = 2 ** (len(info_df.iat[0, 0]) - 1) + 1
+    x = info_df.loc[:, 'x'].to_numpy()
+    y = info_df.loc[:, 'y'].to_numpy()
+    dx = info_df.loc[:, 'dx'].to_numpy()
+    dy = info_df.loc[:, 'dy'].to_numpy()
 
-    replace_dict = {
-        'down': 'b',
-        'cheapest': 'g',
-        'slow': 'r',
-    }
+    if (info_df.loc[:, 'move_type'] == 'not_given').all():
+        color = plt.cm.plasma(np.linspace(0, 1, len(x)))
+    else:
+        replace_dict = {
+            'down': 'b',
+            'cheapest': 'g',
+            'slow': 'r',
+            'return_to_origin': 'k',
+            'origin': 'k',
+        }
 
-    color = arrows.loc[:, 'path_type']
-    color = color.replace(replace_dict)
-    # color = color.apply(mcolors.to_rgb)
-    color = color.to_numpy()
+        color = info_df.loc[:, 'move_type']
+        color = color.replace(replace_dict)
+        color = color.to_numpy()
+
     ax.quiver(
         x, y, dx, dy,
         color=color,

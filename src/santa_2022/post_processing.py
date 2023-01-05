@@ -1,5 +1,6 @@
-from santa_2022.common import *
+from matplotlib import pyplot as plt
 
+from santa_2022.common import *
 import pandas as pd
 
 import os
@@ -42,25 +43,35 @@ def run_remove(path):
     return path
 
 
-def generate_submission(path, name):
+def save_submission(path, name):
     if name is None:
         raise ValueError("Please enter a filename")
     submission = pd.Series(
         [config_to_string(config) for config in path],
         name="configuration",
     )
-    submission.head()
-    submission.to_csv(f"../../output/submissions/{name}.csv", index=False)
+    file_name = f"../../output/submissions/{name}.csv"
+    if os.path.isfile(file_name):
+        print(f'File {file_name} already exists')
+        return
+    submission.to_csv(file_name, index=False)
 
 
-def main():
+def save_descriptive_stats(df, name):
+    if name is None:
+        raise ValueError("Please enter a filename")
+    file_name = f"../../output/info/{name}.csv"
+    if os.path.isfile(file_name):
+        print(f'File {file_name} already exists')
+        return
+    df.to_csv(file_name, index=False)
+
+
+def deduplicate_latest_path():
     df_image = pd.read_csv("../../data/image.csv")
     image = df_to_image(df_image)
 
-    submission_directory = '../../output/submissions'
-    files = os.listdir(submission_directory)
-    latest = max(files,
-                 key=lambda x: os.path.getmtime(os.path.join(submission_directory, x)))
+    latest, submission_directory = get_latest_submission()
     csv = os.path.join(submission_directory, latest)
 
     df = pd.read_csv(csv).astype("string")
@@ -69,7 +80,196 @@ def main():
 
     deduped_path = run_remove(path)
     print(f'Total cost: {total_cost(deduped_path, image)}')
-    generate_submission(deduped_path, latest[:-3] + ' deduped')
+    save_submission(deduped_path, latest[:-3] + ' deduped')
+
+
+def get_latest_submission(dedup=False):
+    submission_directory = '../../output/submissions'
+    files = os.listdir(submission_directory)
+    if not dedup:
+        files = filter(lambda x: 'deduped' not in x, files)
+    latest = max(files,
+                 key=lambda x: os.path.getmtime(os.path.join(submission_directory, x)))
+    return latest, submission_directory
+
+
+def get_submission_arrow_file(latest):
+    return f"../../output/arrows/{latest}"
+
+
+def check_positions(path):
+    n = 128
+    points = list(product(range(-n, n + 1), repeat=2))
+    points = set(points)
+
+    path = set([get_position(c) for c in path])
+    try:
+        assert points == path
+    except AssertionError:
+        return points - path
+
+
+def path_to_df(path, image):
+    position = [get_position(config) for config in path]
+    reconf_costs = [None] + [reconfiguration_cost(config, next_config)
+                             for config, next_config
+                             in zip(path, path[1:])]
+    step_costs = [None] + [step_cost(config, next_config, image)
+                           for config, next_config
+                           in zip(path, path[1:])]
+    color_costs = [None] + [color_cost_from_config(config, next_config, image)
+                            for config, next_config
+                            in zip(path, path[1:])]
+    return pd.DataFrame({"config": path,
+                         "position": position,
+                         "reconf_cost": reconf_costs,
+                         "color_cost": color_costs,
+                         "step_cost": step_costs,
+                         })
+
+
+def add_costs(df, image):
+    path = submission_to_path(df)
+    df['reconf_cost'] = [reconfiguration_cost(config, next_config)
+                         for config, next_config
+                         in zip(path, path[1:])] + [pd.NA]
+    df['color_cost'] = [color_cost_from_config(config, next_config, image)
+                        for config, next_config
+                        in zip(path, path[1:])] + [pd.NA]
+    df['step_cost'] = [step_cost(config, next_config, image)
+                       for config, next_config
+                       in zip(path, path[1:])] + [pd.NA]
+    df['reconf_frac'] = df['reconf_cost'] / df['step_cost']
+    df['color_frac'] = df['color_cost'] / df['step_cost']
+    return df
+
+
+def string_to_config(row_string):
+    a = (pair.split() for pair in row_string.split(";"))
+    b = ([int(x), int(y)] for (x, y) in a)
+    return list(b)
+
+
+def submission_to_path(submission):
+    return [string_to_config(row) for row in submission['configuration']]
+
+
+def path_to_arrows(path):
+    data = []
+    for conf, next_conf in zip(path, path[1:]):
+        x, y = get_position(conf)
+        u, v = get_position(next_conf)
+        dx = u - x
+        dy = v - y
+        data.append([x, y, dx, dy, 'not_given', pd.NA])
+    x, y = get_position(path[-1])
+    data.append([x, y, 0, 0, 'not_given', pd.NA])
+    assert len(data) == len(path)
+    return pd.DataFrame(data=data,
+                        columns=['x', 'y', 'dx', 'dy', 'move_type', 'slow_counter'])
+
+
+def plot_path_over_image(config, info_df, save_path=None, image=None, ax=None,
+                         **figure_args):
+    if os.path.isfile(save_path):
+        print(f'Image {save_path} already exists')
+        return
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(8, 8), **figure_args)
+
+    k = 2 ** (len(config) - 1) + 1
+    x = info_df.loc[:, 'x'].to_numpy()
+    y = info_df.loc[:, 'y'].to_numpy()
+    dx = info_df.loc[:, 'dx'].to_numpy()
+    dy = info_df.loc[:, 'dy'].to_numpy()
+
+    if (info_df.loc[:, 'move_type'] == 'not_given').all():
+        color = plt.cm.plasma(np.linspace(0, 1, len(x)))
+    else:
+        replace_dict = {
+            'down': 'b',
+            'cheapest': 'g',
+            'slow': 'r',
+            'return_to_origin': 'k',
+            'origin': 'k',
+            'corner': 'm',
+        }
+
+        color = info_df.loc[:, 'move_type']
+        color = color.replace(replace_dict)
+        color = color.to_numpy()
+
+    ax.quiver(
+        x, y, dx, dy,
+        color=color,
+        angles='xy', scale_units='xy', scale=1,
+        alpha=0.5,
+        width=0.0005,
+    )
+    l = k - 1 + 0.5
+    if image is not None:
+        ax.matshow(image, extent=[-l, l, -l, l])
+    ax.set_xlim(-l-1, l+1)
+    ax.set_ylim(-l-1, l+1)
+    ax.set_aspect('equal')
+    if save_path:
+        plt.savefig(save_path,
+                    dpi=1000,
+                    # bbox_inches='tight',
+                    # pad_inches=0.,
+                    )
+    else:
+        plt.show()
+    return ax
+
+
+def main():
+    dedup = True
+
+    df_image = pd.read_csv("../../data/image.csv")
+    image = df_to_image(df_image)
+
+    latest, submission_dir = get_latest_submission(dedup=dedup)
+    print(latest)
+    csv = os.path.join(submission_dir, latest)
+
+    submission = pd.read_csv(csv).astype("string")
+    path = submission_to_path(submission)
+    print(total_cost(path, image))
+
+    stats = path_to_df(path, image)
+    arr_file = get_submission_arrow_file(latest)
+    if not dedup:
+        arr_df = pd.read_csv(arr_file)
+    else:
+        arr_df = path_to_arrows(path)
+        save_path = arr_file[:-4] + ' deduped'
+        arr_df.to_csv(save_path + '.csv')
+        origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0),
+                  (-1, 0)]
+        plot_path_over_image(origin,
+                             arr_df,
+                             save_path='dedup_test.png',
+                             image=image,
+                             )
+
+    # stats['move_type'] = [None] + arr_df['path_type'].to_list()
+    # stats.to_csv('../../output/stats.csv', index=False)
+    # # print(stats.head())
+    #
+    # total_cost = stats['step_cost'].sum()
+    # total_moves = len(stats)-1
+    # avg_cost = total_cost / total_moves
+    # print(f"{total_cost=}")
+    # print(f"{total_moves=}")
+    # print(f"{avg_cost=}")
+    # stats = stats.iloc[1:, 1:]
+    # group_by_type = stats.groupby(['move_type']).agg(Sum=('step_cost', 'sum'),
+    #                                                  Count=('step_cost', 'count'),
+    #                                                  Mean=('step_cost', 'mean'),
+    #                                                  )
+    # print(group_by_type)
 
 
 if __name__ == '__main__':

@@ -1,10 +1,11 @@
-from functools import reduce
-from itertools import product
+from functools import *
+from itertools import *
 from math import sqrt
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
+
+import matplotlib.pyplot as plt
 
 
 def cartesian_to_array(x, y, shape):
@@ -223,46 +224,3 @@ def string_to_config(row_string):
     return list(b)
 
 
-def plot_path_over_image(config, arrows, save_path=None, image=None, ax=None,
-                         **figure_args):
-    if ax is None:
-        _, ax = plt.subplots(figsize=(8, 8), **figure_args)
-
-    k = 2 ** (len(config) - 1) + 1
-    x = arrows.loc[:, 'x'].to_numpy()
-    y = arrows.loc[:, 'y'].to_numpy()
-    dx = arrows.loc[:, 'dx'].to_numpy()
-    dy = arrows.loc[:, 'dy'].to_numpy()
-
-    replace_dict = {
-        'down': 'b',
-        'cheapest': 'g',
-        'slow': 'r',
-    }
-
-    color = arrows.loc[:, 'path_type']
-    color = color.replace(replace_dict)
-    # color = color.apply(mcolors.to_rgb)
-    color = color.to_numpy()
-    ax.quiver(
-        x, y, dx, dy,
-        color=color,
-        angles='xy', scale_units='xy', scale=1,
-        alpha=0.5,
-        width=0.0005,
-    )
-    l = k - 1 + 0.5
-    if image is not None:
-        ax.matshow(image, extent=[-l, l, -l, l])
-    ax.set_xlim(-l - 1, l + 1)
-    ax.set_ylim(-l - 1, l + 1)
-    ax.set_aspect('equal')
-    if save_path:
-        plt.savefig(save_path,
-                    dpi=1000,
-                    # bbox_inches='tight',
-                    # pad_inches=0.,
-                    )
-    else:
-        plt.show()
-    return ax
