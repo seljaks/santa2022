@@ -232,8 +232,8 @@ def main(number_of_links=8):
         datefmt='%H:%M:%S',
         level=logging.ERROR
     )
-    corner = True
-    max_links = 4
+    corner = False
+    max_links = 8
     move_direction = 'down'
 
     direction_functions = {
