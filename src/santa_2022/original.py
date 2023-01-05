@@ -1,13 +1,11 @@
-from functools import *
-from itertools import *
-
 from tqdm import tqdm
 
 import datetime
 import logging
 
 from santa_2022.common import *
-from santa_2022.post_processing import run_remove, generate_submission
+from santa_2022.post_processing import run_remove, save_submission, \
+    save_descriptive_stats, path_to_arrows, plot_path_over_image
 
 
 # my stuff
@@ -105,7 +103,7 @@ def l1_dist(other, position):
 
 
 def l2_dist(other, position):
-    return sqrt((other[0] - position[0])**2 + (other[1] - position[1])**2)
+    return sqrt((other[0] - position[0]) ** 2 + (other[1] - position[1]) ** 2)
 
 
 def lmax_dist(other, position):
@@ -193,7 +191,7 @@ def rotate_n_links(config, link_idxs, directions):
 
 def get_n_link_rotations(config, n):
     rotations = []
-    for comb in combinations(range(len(config)), r=n):
+    for comb in reversed(list(combinations(range(len(config)), r=n))):
         for direction in product((-1, 1), repeat=n):
             rotations.append(rotate_n_links(config, comb, direction))
     return rotations
@@ -218,21 +216,33 @@ def sliced_image(config, image):
     return sliced
 
 
+def merge_path_and_information(path, info):
+    assert len(path) == len(info)
+    return [[config_to_string(config)] + info for config, info in zip(path, info)]
+
+
 def main(number_of_links=8):
+    assert number_of_links <= 8
+
     now = datetime.datetime.now()
     logging.basicConfig(
         filename=f"../../logging/{now}.log",
         filemode='a',
         format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
         datefmt='%H:%M:%S',
-        level=logging.DEBUG
+        level=logging.ERROR
     )
+    corner = True
+    max_links = 4
+    move_direction = 'down'
 
-    submission = open(f'../../output/submissions/{now}.csv', 'a')
-    submission.write(f'configuration\n')
-
-    arrows = open(f'../../output/arrows/{now}.csv', 'a')
-    arrows.write(f'x,y,dx,dy,path_type\n')
+    direction_functions = {
+        'down': get_below,
+        'up': get_above,
+        'left': get_left,
+        'right': get_right,
+    }
+    direction_function = direction_functions.get(move_direction)
 
     df_image = pd.read_csv("../../data/image.csv")
     image = df_to_image(df_image)
@@ -240,8 +250,7 @@ def main(number_of_links=8):
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
 
     # setup if testing behavior on smaller version of image
-    if number_of_links != len(origin):
-        assert number_of_links < 8
+    if number_of_links < 8:
         origin = origin[-number_of_links:]
         origin[0] = (abs(origin[0][0]), abs(origin[0][1]))
         assert get_position(origin) == (0, 0)
@@ -252,58 +261,87 @@ def main(number_of_links=8):
     unvisited = set(points)
 
     path = [origin]
-    submission.write(f'{config_to_string(origin)}\n')
+    additional_info = []
+
+    slow_counter = 0
+
+    if corner:
+        corners = [(-128, -128), (-128, 128), (128, -128), (128, 128)]
+    else:
+        corners = []
 
     unvisited.remove(get_position(origin))
     for i in tqdm(range(len(points) - 1)):
         config = path[-1]
         x, y = get_position(config)
 
-        nearby = get_diagonal(config)
+        nearby = direction_function(config)
 
-        one_two_rotations = get_one_two_link_neighbors(config)
-        unvisited_rotations = get_unvisited(one_two_rotations, unvisited)
+        rotations = get_n_link_rotations(config, 1)
+        unvisited_rotations = get_unvisited(rotations, unvisited)
+
+        corner_candidates = list(
+            filter(lambda x: get_position(x) in corners, unvisited_rotations))
 
         nearby_candidates = list(
             filter(lambda x: get_position(x) == nearby, unvisited_rotations))
 
-        if nearby_candidates:
+        if corner_candidates:
+            logging.info(f"{i}: {config=} moved to corner")
+            next_config = min(corner_candidates,
+                              key=lambda x: step_cost(config, x, image))
+            path.append(next_config)
+
+            u, v = get_position(next_config)
+            dx = u - x
+            dy = v - y
+            additional_info.append([x, y, dx, dy, 'corner', pd.NA])
+
+        elif nearby_candidates:
             logging.info(f"{i}: {config=} moved down")
             next_config = min(nearby_candidates,
                               key=lambda x: step_cost(config, x, image))
             path.append(next_config)
-            submission.write(f'{config_to_string(next_config)}\n')
-            u, v = get_position(next_config)
-            dx = u - x
-            dy = v - y
-            arrows.write(f'{x},{y},{dx},{dy},down\n')
 
-        elif unvisited_rotations:
-            next_config = min(unvisited_rotations,
-                              key=lambda x: step_cost(config, x, image))
-            logging.info(f"{i} {config=} moved cheapest")
-            path.append(next_config)
-            submission.write(f'{config_to_string(next_config)}\n')
             u, v = get_position(next_config)
             dx = u - x
             dy = v - y
-            arrows.write(f'{x},{y},{dx},{dy},cheapest\n')
+            additional_info.append([x, y, dx, dy, move_direction, pd.NA])
 
         else:
-            closest_unvisited = get_closest_unvisited_l1(config, unvisited)
-            path_extension = get_path_to_point(config, closest_unvisited)[1:]
-            path.extend(path_extension)
-            logging.info(f"{i} {config=} moved slow")
+            for n in range(2, max_links+1):
+                rotations += get_n_link_rotations(config, n)
+                unvisited_rotations = get_unvisited(rotations, unvisited)
+                if unvisited_rotations:
+                    break
+            else:
+                unvisited_rotations = []
 
-            prev = config.copy()
-            for c in path_extension:
-                submission.write(f'{config_to_string(c)}\n')
-                x, y = get_position(prev)
-                u, v = get_position(c)
+            if unvisited_rotations:
+                next_config = min(unvisited_rotations,
+                                  key=lambda x: step_cost(config, x, image))
+                logging.info(f"{i} {config=} moved cheapest")
+                path.append(next_config)
+
+                u, v = get_position(next_config)
                 dx = u - x
                 dy = v - y
-                arrows.write(f'{x},{y},{dx},{dy},slow\n')
-                prev = c
+                additional_info.append([x, y, dx, dy, 'cheapest', pd.NA])
+            else:
+                closest_unvisited = get_closest_unvisited_l1(config, unvisited)
+                path_extension = get_path_to_point(config, closest_unvisited)[1:]
+                path.extend(path_extension)
+                logging.info(f"{i} {config=} moved slow")
+
+                prev = config.copy()
+                for c in path_extension:
+                    x, y = get_position(prev)
+                    u, v = get_position(c)
+                    dx = u - x
+                    dy = v - y
+                    additional_info.append([x, y, dx, dy, 'slow', slow_counter])
+                    prev = c
+                slow_counter += 1
 
         logging.info(f"{i}: visited {get_position(path[-1])}")
         unvisited.remove(get_position(path[-1]))
@@ -314,32 +352,45 @@ def main(number_of_links=8):
     path_extension = get_path_to_configuration(path[-1], origin)[1:]
     prev = path[-1].copy()
     for c in path_extension:
-        submission.write(f'{config_to_string(c)}\n')
         x, y = get_position(prev)
         u, v = get_position(c)
         dx = u - x
         dy = v - y
-        arrows.write(f'{x},{y},{dx},{dy},slow\n')
+        additional_info.append([x, y, dx, dy, 'return_to_origin', slow_counter])
         prev = c
 
     path.extend(path_extension)
     assert path[0] == path[-1]
+
+    x, y = get_position(path[-1])
+    additional_info.append([x, y, 0, 0, 'origin', pd.NA])
+
     logging.debug(f"path length after going to origin: {len(path)}")
 
-    submission.close()
-    arrows.close()
+    df = pd.DataFrame(data=merge_path_and_information(path, additional_info),
+                      columns=['configuration', 'x', 'y', 'dx', 'dy', 'move_type',
+                               'slow_counter'])
 
-    df = pd.read_csv(f'../../output/submissions/{now}.csv').astype("string")
-    path = [string_to_config(row) for row in df['configuration']]
-    print(f'Total cost: {total_cost(path, image)}')
+    cost = total_cost(path, image)
+    print(f'Total cost: {cost}')
 
-    deduped_path = run_remove(path)
-    print(f'Deduplicated total cost: {total_cost(deduped_path, image)}')
-    generate_submission(deduped_path, str(now) + ' deduped')
-
-    arrcsv = pd.read_csv(f'../../output/arrows/{now}.csv')
-    plot_path_over_image(origin, arrcsv, save_path=f'../../output/images/{now}.png',
+    file_name = f'{corner=}_{max_links=}_{move_direction}_{cost}'
+    save_descriptive_stats(df, file_name)
+    save_submission(path, file_name)
+    plot_path_over_image(origin, df, save_path=f'../../output/images/{file_name}.png',
                          image=image)
+
+    dedup = True
+    if dedup:
+        deduped_path = run_remove(path)
+        cost = total_cost(deduped_path, image)
+        print(f'Deduplicated total cost: {cost}')
+        file_name = f'{corner=}_{max_links=}_{move_direction}_{cost}_deduped'
+        save_submission(deduped_path, file_name)
+        df = path_to_arrows(deduped_path)
+        plot_path_over_image(origin, df,
+                             save_path=f'../../output/images/{file_name}.png',
+                             image=image)
 
 
 if __name__ == "__main__":
