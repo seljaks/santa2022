@@ -382,12 +382,13 @@ def main(number_of_links=8):
 
     dedup = True
     if dedup:
-        deduped_path = run_remove(path)
-        cost = total_cost(deduped_path, image)
-        print(f'Deduplicated total cost: {cost}')
+        for _ in range(2):
+            path = run_remove(path)
+            cost = total_cost(path, image)
+            print(f'Deduplicated total cost: {cost}')
         file_name = f'{corner=}_{max_links=}_{move_direction}_{cost}_deduped'
-        save_submission(deduped_path, file_name)
-        df = path_to_arrows(deduped_path)
+        save_submission(path, file_name)
+        df = path_to_arrows(path)
         plot_path_over_image(origin, df,
                              save_path=f'../../output/images/{file_name}.png',
                              image=image)
