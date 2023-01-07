@@ -1,7 +1,6 @@
-from tqdm import tqdm
+from multiprocessing import Pool
 
-import datetime
-import logging
+from tqdm import tqdm
 
 from santa_2022.common import *
 from santa_2022.post_processing import run_remove, save_submission, \
@@ -122,29 +121,14 @@ def get_cheapest_farthest_neighbor(config, image):
         return min(candidates, key=lambda x: x[-1])[0]
 
 
-def get_closest_unvisited_l1(config, unvisited):
+def get_closest_unvisited(config, unvisited, dist_func):
     position = get_position(config)
-
-    dist_partial = partial(l1_dist, position=position)
-    return min(unvisited, key=dist_partial)
-
-
-def get_closest_unvisited_l2(config, unvisited):
-    position = get_position(config)
-
-    dist_partial = partial(l2_dist, position=position)
-    return min(unvisited, key=dist_partial)
-
-
-def get_closest_unvisited_lmax(config, unvisited):
-    position = get_position(config)
-
-    dist_partial = partial(lmax_dist, position=position)
+    dist_partial = partial(dist_func, position=position)
     return min(unvisited, key=dist_partial)
 
 
 def get_cheapest_farther_neighbor_towards_unvisited(config, image, unvisited):
-    closest_unvisited = get_closest_unvisited_l1(config, unvisited)
+    closest_unvisited = get_closest_unvisited(config, unvisited, l1_dist)
     l1_dist_partial = partial(l1_dist, position=closest_unvisited)
 
     candidates = min(get_neighbors_positions_costs(config, image),
@@ -176,11 +160,6 @@ def get_right(config):
     return x + 1, y
 
 
-def get_diagonal(config):
-    x, y = get_position(config)
-    return x - 1, y - 1
-
-
 def rotate_n_links(config, link_idxs, directions):
     config = config.copy()
     assert len(link_idxs) == len(directions)
@@ -197,12 +176,13 @@ def get_n_link_rotations(config, n):
     return rotations
 
 
-def get_one_two_link_neighbors(config):
-    return get_n_link_rotations(config, 1) + get_n_link_rotations(config, 2)
-
-
 def get_unvisited(neighbors, unvisited):
     return list(filter(lambda c: get_position(c) in unvisited, neighbors))
+
+
+def get_unvisited_with_costs(current_config, unvisited_neighbors, image):
+    costs = [step_cost(current_config, c, image) for c in unvisited_neighbors]
+    return list(zip(unvisited_neighbors, costs))
 
 
 def sliced_image(config, image):
@@ -221,20 +201,9 @@ def merge_path_and_information(path, info):
     return [[config_to_string(config)] + info for config, info in zip(path, info)]
 
 
-def main(number_of_links=8):
-    assert number_of_links <= 8
-
-    now = datetime.datetime.now()
-    logging.basicConfig(
-        filename=f"../../logging/{now}.log",
-        filemode='a',
-        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-        datefmt='%H:%M:%S',
-        level=logging.ERROR
-    )
-    corner = False
-    max_links = 8
-    move_direction = 'down'
+def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=True,
+           save=False, number_of_links=8):
+    assert 2 <= number_of_links <= 8
 
     direction_functions = {
         'down': get_below,
@@ -242,13 +211,10 @@ def main(number_of_links=8):
         'left': get_left,
         'right': get_right,
     }
-    direction_function = direction_functions.get(move_direction)
-
+    direction_function = direction_functions.get(nearby_direction)
     df_image = pd.read_csv("../../data/image.csv")
     image = df_to_image(df_image)
-
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
-
     # setup if testing behavior on smaller version of image
     if number_of_links < 8:
         origin = origin[-number_of_links:]
@@ -259,140 +225,188 @@ def main(number_of_links=8):
     n = origin[0][0] * 2
     points = list(product(range(-n, n + 1), repeat=2))
     unvisited = set(points)
-
     path = [origin]
     additional_info = []
-
     slow_counter = 0
-
     if corner:
         corners = [(-128, -128), (-128, 128), (128, -128), (128, 128)]
     else:
         corners = []
-
     unvisited.remove(get_position(origin))
-    for i in tqdm(range(len(points) - 1)):
+    for _ in tqdm(range(len(points) - 1)):
         config = path[-1]
-        x, y = get_position(config)
 
-        nearby = direction_function(config)
+        slow_counter = one_step(config, unvisited, path, image, additional_info,
+                                direction_function, corners, nearby_threshold,
+                                max_links,
+                                nearby_direction,
+                                slow_counter)
 
-        rotations = get_n_link_rotations(config, 1)
-        unvisited_rotations = get_unvisited(rotations, unvisited)
-
-        corner_candidates = list(
-            filter(lambda x: get_position(x) in corners, unvisited_rotations))
-
-        nearby_candidates = list(
-            filter(lambda x: get_position(x) == nearby, unvisited_rotations))
-
-        if corner_candidates:
-            logging.info(f"{i}: {config=} moved to corner")
-            next_config = min(corner_candidates,
-                              key=lambda x: step_cost(config, x, image))
-            path.append(next_config)
-
-            u, v = get_position(next_config)
-            dx = u - x
-            dy = v - y
-            additional_info.append([x, y, dx, dy, 'corner', pd.NA])
-
-        elif nearby_candidates:
-            logging.info(f"{i}: {config=} moved down")
-            next_config = min(nearby_candidates,
-                              key=lambda x: step_cost(config, x, image))
-            path.append(next_config)
-
-            u, v = get_position(next_config)
-            dx = u - x
-            dy = v - y
-            additional_info.append([x, y, dx, dy, move_direction, pd.NA])
-
-        else:
-            for n in range(2, max_links+1):
-                rotations += get_n_link_rotations(config, n)
-                unvisited_rotations = get_unvisited(rotations, unvisited)
-                if unvisited_rotations:
-                    break
-            else:
-                unvisited_rotations = []
-
-            if unvisited_rotations:
-                next_config = min(unvisited_rotations,
-                                  key=lambda x: step_cost(config, x, image))
-                logging.info(f"{i} {config=} moved cheapest")
-                path.append(next_config)
-
-                u, v = get_position(next_config)
-                dx = u - x
-                dy = v - y
-                additional_info.append([x, y, dx, dy, 'cheapest', pd.NA])
-            else:
-                closest_unvisited = get_closest_unvisited_l1(config, unvisited)
-                path_extension = get_path_to_point(config, closest_unvisited)[1:]
-                path.extend(path_extension)
-                logging.info(f"{i} {config=} moved slow")
-
-                prev = config.copy()
-                for c in path_extension:
-                    x, y = get_position(prev)
-                    u, v = get_position(c)
-                    dx = u - x
-                    dy = v - y
-                    additional_info.append([x, y, dx, dy, 'slow', slow_counter])
-                    prev = c
-                slow_counter += 1
-
-        logging.info(f"{i}: visited {get_position(path[-1])}")
         unvisited.remove(get_position(path[-1]))
-
     assert unvisited == set()
-
-    logging.debug(f"path length before going to origin: {len(path)}")
     path_extension = get_path_to_configuration(path[-1], origin)[1:]
+
     prev = path[-1].copy()
     for c in path_extension:
-        x, y = get_position(prev)
-        u, v = get_position(c)
-        dx = u - x
-        dy = v - y
-        additional_info.append([x, y, dx, dy, 'return_to_origin', slow_counter])
+        log_additional_info(prev, c, 'return_to_origin', 10000,
+                            additional_info)
         prev = c
 
     path.extend(path_extension)
     assert path[0] == path[-1]
-
     x, y = get_position(path[-1])
     additional_info.append([x, y, 0, 0, 'origin', pd.NA])
-
-    logging.debug(f"path length after going to origin: {len(path)}")
-
     df = pd.DataFrame(data=merge_path_and_information(path, additional_info),
                       columns=['configuration', 'x', 'y', 'dx', 'dy', 'move_type',
                                'slow_counter'])
-
     cost = total_cost(path, image)
     print(f'Total cost: {cost}')
 
-    file_name = f'{corner=}_{max_links=}_{move_direction}_{cost}'
-    save_descriptive_stats(df, file_name)
-    save_submission(path, file_name)
-    plot_path_over_image(origin, df, save_path=f'../../output/images/{file_name}.png',
-                         image=image)
-
-    dedup = True
+    if save:
+        file_name = f'{tag}-{cost}'
+        save_descriptive_stats(df, file_name)
+        save_submission(path, file_name)
+        plot_path_over_image(origin, df,
+                             save_path=f'../../output/images/{file_name}.png',
+                             image=image)
     if dedup:
         for _ in range(2):
             path = run_remove(path)
             cost = total_cost(path, image)
             print(f'Deduplicated total cost: {cost}')
-        file_name = f'{corner=}_{max_links=}_{move_direction}_{cost}_deduped'
-        save_submission(path, file_name)
-        df = path_to_arrows(path)
-        plot_path_over_image(origin, df,
-                             save_path=f'../../output/images/{file_name}.png',
-                             image=image)
+
+        if save:
+            file_name = f'{tag}-{cost}-deduped'
+            save_submission(path, file_name)
+            df = path_to_arrows(path)
+            plot_path_over_image(origin, df,
+                                 save_path=f'../../output/images/{file_name}.png',
+                                 image=image)
+
+    return tag, cost
+
+
+def one_step(config, unvisited, path, image, additional_info, direction_function,
+             corners, nearby_threshold, max_links, move_direction, slow_counter):
+    rotations = get_n_link_rotations(config, 1)
+    unvisited_rotations = get_unvisited(rotations, unvisited)
+    corner_candidates = list(
+        filter(lambda x: get_position(x) in corners, unvisited_rotations))
+    if corner_candidates:
+        assert len(corner_candidates) == 1
+        next_config = corner_candidates[0]
+        path.append(next_config)
+        log_additional_info(config, next_config, 'corner', pd.NA, additional_info)
+
+    else:
+        nearby = direction_function(config)
+        nearby_candidates = list(
+            filter(lambda x: get_position(x) == nearby, unvisited_rotations))
+
+        if nearby_candidates:
+            unvisited_with_costs = get_unvisited_with_costs(config, nearby_candidates,
+                                                            image)
+            cheapest_down, nearby_cost = min(unvisited_with_costs, key=lambda x: x[1])
+        else:
+            cheapest_down, nearby_cost = None, 1000.
+
+        if nearby_cost <= nearby_threshold:
+            next_config = cheapest_down
+            path.append(next_config)
+            log_additional_info(config, next_config, move_direction, pd.NA,
+                                additional_info)
+
+        else:
+            move_costs = [sqrt(k) for k in range(1, max_links + 1)] + [0.]
+            for n in range(2, max_links + 1):
+                rotations += get_n_link_rotations(config, n)
+                unvisited_rotations = get_unvisited(rotations, unvisited)
+                if unvisited_rotations:
+                    unvisited_with_costs = get_unvisited_with_costs(config,
+                                                                    unvisited_rotations,
+                                                                    image)
+                    cheapest_unvisited, cost = min(unvisited_with_costs,
+                                                   key=lambda x: x[1])
+                    if cost <= move_costs[n]:
+                        next_config = cheapest_unvisited
+                        path.append(next_config)
+                        log_additional_info(config, next_config, 'cheapest', pd.NA,
+                                            additional_info)
+                        break
+            else:
+                if unvisited_rotations:
+                    unvisited_with_costs = get_unvisited_with_costs(config,
+                                                                    unvisited_rotations,
+                                                                    image)
+                    cheapest_unvisited, cost = min(unvisited_with_costs,
+                                                   key=lambda x: x[1])
+                else:
+                    cheapest_unvisited, cost = [], 1000.
+
+                closest_unvisited = get_closest_unvisited(config, unvisited, l1_dist)
+                path_extension = get_path_to_point(config, closest_unvisited)
+                extension_cost = total_cost(path_extension, image)
+                path_extension = path_extension[1:]
+
+                if cost <= extension_cost:
+                    next_config = cheapest_unvisited
+                    path.append(next_config)
+                    log_additional_info(config, next_config, 'cheapest', pd.NA,
+                                        additional_info)
+
+                else:
+                    path.extend(path_extension)
+
+                    prev = config.copy()
+                    for c in path_extension:
+                        log_additional_info(prev, c, 'slow', slow_counter,
+                                            additional_info)
+                        prev = c
+                    slow_counter += 1
+    return slow_counter
+
+
+def log_additional_info(config, next_config, move_direction, slow_counter,
+                        additional_info):
+    x, y = get_position(config)
+    u, v = get_position(next_config)
+    dx = u - x
+    dy = v - y
+    additional_info.append([x, y, dx, dy, move_direction, slow_counter])
+
+
+def grid_search():
+    corner = [False]
+    links = [8]
+    directions = ['up']
+    thresholds = [4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75]
+    grid = [(corner, max_links, nd, nt, f'{corner=}-{max_links=}-{nd}-{nt:4.2f}') for
+            corner, max_links, nd, nt in
+            product(corner, links, directions, thresholds)
+            ]
+
+    with Pool() as pool:
+        results = pool.starmap(search, grid)
+        for tag, cost in results:
+            print(f'{tag} has deduped cost of {cost:.0f}')
+
+
+def single_search():
+    corner = False
+    max_links = 8
+    nearby_direction = 'down'
+    nearby_threshold = 6.0
+    save = True
+
+    tag = f'{corner=}-{max_links=}-{nearby_direction}-{nearby_threshold:4.2f}'
+    tag, cost = search(corner, max_links, nearby_direction, nearby_threshold, tag,
+                       save=False, number_of_links=2)
+    print(tag, cost)
+
+
+def main():
+    grid_search()
 
 
 if __name__ == "__main__":
-    main(number_of_links=8)
+    main()
