@@ -97,18 +97,6 @@ def get_visited_neighbor_with_cheapest_unvisited(config, unvisited, image):
     return neighbors[min_idx], unvis_candidate
 
 
-def l1_dist(other, position):
-    return abs(abs(other[0] - position[0]) + abs(other[1] - position[1]))
-
-
-def l2_dist(other, position):
-    return sqrt((other[0] - position[0]) ** 2 + (other[1] - position[1]) ** 2)
-
-
-def lmax_dist(other, position):
-    return max(abs(other[0] - position[0]), abs(other[1] - position[1]))
-
-
 def get_cheapest_farthest_neighbor(config, image):
     position = get_position(config)
     l1_dist_partial = partial(l1_dist, position=position)
@@ -119,6 +107,18 @@ def get_cheapest_farthest_neighbor(config, image):
         return candidates[0]
     else:
         return min(candidates, key=lambda x: x[-1])[0]
+
+
+def l1_dist(other, position):
+    return abs(abs(other[0] - position[0]) + abs(other[1] - position[1]))
+
+
+def l2_dist(other, position):
+    return sqrt((other[0] - position[0]) ** 2 + (other[1] - position[1]) ** 2)
+
+
+def lmax_dist(other, position):
+    return max(abs(other[0] - position[0]), abs(other[1] - position[1]))
 
 
 def get_closest_unvisited(config, unvisited, dist_func):
@@ -158,6 +158,16 @@ def get_left(config):
 def get_right(config):
     x, y = get_position(config)
     return x + 1, y
+
+
+def get_below_127(config):
+    x, y = get_position(config)
+    if y >= -126:
+        return x, y - 1
+    elif y == -127:
+        return x, y
+    else:
+        return x, y
 
 
 def rotate_n_links(config, link_idxs, directions):
@@ -204,12 +214,15 @@ def merge_path_and_information(path, info):
 def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=True,
            save=False, number_of_links=8):
     assert 2 <= number_of_links <= 8
+    if number_of_links < 8:
+        save = False
 
     direction_functions = {
         'down': get_below,
         'up': get_above,
         'left': get_left,
         'right': get_right,
+        'down127': get_below_127,
     }
     direction_function = direction_functions.get(nearby_direction)
     df_image = pd.read_csv("../../data/image.csv")
@@ -263,7 +276,7 @@ def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=Tru
     print(f'Total cost: {cost}')
 
     if save:
-        file_name = f'{tag}-{cost}'
+        file_name = f'{tag}-{cost:.0f}'
         save_descriptive_stats(df, file_name)
         save_submission(path, file_name)
         plot_path_over_image(origin, df,
@@ -276,7 +289,7 @@ def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=Tru
             print(f'Deduplicated total cost: {cost}')
 
         if save:
-            file_name = f'{tag}-{cost}-deduped'
+            file_name = f'{tag}-{cost:.0f}-deduped'
             save_submission(path, file_name)
             df = path_to_arrows(path)
             plot_path_over_image(origin, df,
@@ -395,17 +408,17 @@ def single_search():
     corner = False
     max_links = 8
     nearby_direction = 'down'
-    nearby_threshold = 6.0
+    nearby_threshold = 5.0
     save = True
 
     tag = f'{corner=}-{max_links=}-{nearby_direction}-{nearby_threshold:4.2f}'
     tag, cost = search(corner, max_links, nearby_direction, nearby_threshold, tag,
-                       save=False, number_of_links=2)
+                       save=save)
     print(tag, cost)
 
 
 def main():
-    grid_search()
+    single_search()
 
 
 if __name__ == "__main__":

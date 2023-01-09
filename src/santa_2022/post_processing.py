@@ -189,6 +189,7 @@ def plot_path_over_image(config, info_df, save_path=None, image=None, ax=None,
     else:
         replace_dict = {
             'down': 'b',
+            'down127': 'b',
             'cheapest': 'g',
             'slow': 'r',
             'return_to_origin': 'k',
