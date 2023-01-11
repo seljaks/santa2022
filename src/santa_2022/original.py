@@ -207,7 +207,7 @@ def sliced_image(config, image):
 
 
 def merge_path_and_information(path, info):
-    assert len(path) == len(info)
+    assert len(path) == len(info), f'{len(path)=}, {len(info)=}'
     return [[config_to_string(config)] + info for config, info in zip(path, info)]
 
 
@@ -251,9 +251,7 @@ def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=Tru
 
         slow_counter = one_step(config, unvisited, path, image, additional_info,
                                 direction_function, corners, nearby_threshold,
-                                max_links,
-                                nearby_direction,
-                                slow_counter)
+                                max_links, nearby_direction, slow_counter)
 
         unvisited.remove(get_position(path[-1]))
     assert unvisited == set()
@@ -261,8 +259,7 @@ def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=Tru
 
     prev = path[-1].copy()
     for c in path_extension:
-        log_additional_info(prev, c, 'return_to_origin', 10000,
-                            additional_info)
+        log_additional_info(prev, c, 'return_to_origin', 10000, additional_info)
         prev = c
 
     path.extend(path_extension)
@@ -299,8 +296,125 @@ def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=Tru
     return tag, cost
 
 
+def two_sided_search(corner, max_links, nearby_direction, nearby_threshold, tag,
+                     dedup=True,
+                     save=False, number_of_links=8):
+    assert 2 <= number_of_links <= 8
+    if number_of_links < 8:
+        save = False
+
+    direction_functions = {
+        'down': get_below,
+        'up': get_above,
+        'left': get_left,
+        'right': get_right,
+        'down127': get_below_127,
+    }
+    df_image = pd.read_csv("../../data/image.csv")
+    image = df_to_image(df_image)
+    origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
+    # setup if testing behavior on smaller version of image
+    if number_of_links < 8:
+        origin = origin[-number_of_links:]
+        origin[0] = (abs(origin[0][0]), abs(origin[0][1]))
+        assert get_position(origin) == (0, 0)
+        image = sliced_image(origin, image)
+
+    n = origin[0][0] * 2
+    points = list(product(range(-n, n + 1), repeat=2))
+    unvisited = set(points)
+
+    # keep same direction and threshold for both searches
+    direction_function = direction_functions.get(nearby_direction)
+
+    path = [origin]
+    additional_info = []
+    slow_counter = 0
+
+    reverse_path = [origin]
+    reverse_additional_info = [[0, 0, 0, 0, 'origin', pd.NA]]
+    reverse_slow_counter = 1000
+
+    if corner:
+        corners = [(-128, -128), (-128, 128), (128, -128), (128, 128)]
+    else:
+        corners = []
+    unvisited.remove(get_position(origin))
+
+    pbar = tqdm(total=len(unvisited))
+    while unvisited:
+        config = path[-1]
+        slow_counter = one_step(config, unvisited, path, image, additional_info,
+                                direction_function, corners, nearby_threshold,
+                                max_links, nearby_direction, slow_counter)
+
+        unvisited.remove(get_position(path[-1]))
+        pbar.update(1)
+
+        reverse_config = reverse_path[-1]
+        reverse_slow_counter = one_step(reverse_config, unvisited, reverse_path, image,
+                                        reverse_additional_info, direction_function,
+                                        corners, nearby_threshold, max_links,
+                                        nearby_direction, reverse_slow_counter,
+                                        reverse=True)
+
+        unvisited.remove(get_position(reverse_path[-1]))
+        pbar.update(1)
+
+    assert unvisited == set()
+    pbar.close()
+
+    path_extension = get_path_to_configuration(path[-1], reverse_path[-1])
+    connection_cost = total_cost(path_extension, image)
+    print(f'{connection_cost=:4.2f} {len(path_extension)=}')
+    path_extension = path_extension[1: -1]
+
+    prev = path[-1].copy()
+    for c in path_extension:
+        log_additional_info(prev, c, 'slow', 10000, additional_info)
+        prev = c
+
+    path.extend(path_extension)
+    log_additional_info(path[-1], reverse_path[-1], 'slow', 10000, additional_info)
+
+    path = path + reverse_path[::-1]
+    assert path[0] == path[-1]
+
+    additional_info = additional_info + reverse_additional_info[::-1]
+
+    df = pd.DataFrame(data=merge_path_and_information(path, additional_info),
+                      columns=['configuration', 'x', 'y', 'dx', 'dy', 'move_type',
+                               'slow_counter'])
+    cost = total_cost(path, image)
+    print(f'Total cost: {cost}')
+
+    if save:
+        file_name = f'{tag}-{cost:.0f}'
+        save_descriptive_stats(df, file_name)
+        save_submission(path, file_name)
+        plot_path_over_image(origin, df,
+                             save_path=f'../../output/images/{file_name}.png',
+                             image=image)
+    if dedup:
+        for _ in range(2):
+            path = run_remove(path)
+            cost = total_cost(path, image)
+            print(f'Deduplicated total cost: {cost}')
+
+        if save:
+            file_name = f'{tag}-{cost:.0f}-deduped'
+            save_submission(path, file_name)
+            df = path_to_arrows(path)
+            plot_path_over_image(origin, df,
+                                 save_path=f'../../output/images/{file_name}.png',
+                                 image=image)
+
+    return tag, cost
+
+
 def one_step(config, unvisited, path, image, additional_info, direction_function,
-             corners, nearby_threshold, max_links, move_direction, slow_counter):
+             corners, nearby_threshold, max_links, move_direction, slow_counter,
+             reverse=False):
     rotations = get_n_link_rotations(config, 1)
     unvisited_rotations = get_unvisited(rotations, unvisited)
     corner_candidates = list(
@@ -309,7 +423,8 @@ def one_step(config, unvisited, path, image, additional_info, direction_function
         assert len(corner_candidates) == 1
         next_config = corner_candidates[0]
         path.append(next_config)
-        log_additional_info(config, next_config, 'corner', pd.NA, additional_info)
+        log_additional_info(config, next_config, 'corner', pd.NA, additional_info,
+                            reverse=reverse)
 
     else:
         nearby = direction_function(config)
@@ -327,7 +442,7 @@ def one_step(config, unvisited, path, image, additional_info, direction_function
             next_config = cheapest_down
             path.append(next_config)
             log_additional_info(config, next_config, move_direction, pd.NA,
-                                additional_info)
+                                additional_info, reverse=reverse)
 
         else:
             move_costs = [sqrt(k) for k in range(1, max_links + 1)] + [0.]
@@ -344,7 +459,7 @@ def one_step(config, unvisited, path, image, additional_info, direction_function
                         next_config = cheapest_unvisited
                         path.append(next_config)
                         log_additional_info(config, next_config, 'cheapest', pd.NA,
-                                            additional_info)
+                                            additional_info, reverse=reverse)
                         break
             else:
                 if unvisited_rotations:
@@ -365,7 +480,7 @@ def one_step(config, unvisited, path, image, additional_info, direction_function
                     next_config = cheapest_unvisited
                     path.append(next_config)
                     log_additional_info(config, next_config, 'cheapest', pd.NA,
-                                        additional_info)
+                                        additional_info, reverse=reverse)
 
                 else:
                     path.extend(path_extension)
@@ -373,47 +488,58 @@ def one_step(config, unvisited, path, image, additional_info, direction_function
                     prev = config.copy()
                     for c in path_extension:
                         log_additional_info(prev, c, 'slow', slow_counter,
-                                            additional_info)
+                                            additional_info, reverse=reverse)
                         prev = c
                     slow_counter += 1
     return slow_counter
 
 
 def log_additional_info(config, next_config, move_direction, slow_counter,
-                        additional_info):
-    x, y = get_position(config)
-    u, v = get_position(next_config)
+                        additional_info, reverse=False):
+    if not reverse:
+        x, y = get_position(config)
+        u, v = get_position(next_config)
+    else:
+        x, y = get_position(next_config)
+        u, v = get_position(config)
     dx = u - x
     dy = v - y
     additional_info.append([x, y, dx, dy, move_direction, slow_counter])
 
 
 def grid_search():
-    corner = [False]
-    links = [8]
-    directions = ['up']
-    thresholds = [4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75]
-    grid = [(corner, max_links, nd, nt, f'{corner=}-{max_links=}-{nd}-{nt:4.2f}') for
-            corner, max_links, nd, nt in
-            product(corner, links, directions, thresholds)
-            ]
+    corner = [False, True]
+    links = [3, 4, 5, 6, 7, 8]
+    directions = ['down', 'up']
+    thresholds = [1.2, 1.5, 2.0, 3.0, 4.0, 4.5, 5.0, 5.5]
+    grid = [
+        (corner, max_links, nd, nt, f'two_sided-{corner=}-{max_links=}-{nd}-{nt:4.2f}')
+        for
+        corner, max_links, nd, nt in
+        product(corner, links, directions, thresholds)
+        ]
 
     with Pool() as pool:
-        results = pool.starmap(search, grid)
-        for tag, cost in results:
-            print(f'{tag} has deduped cost of {cost:.0f}')
+        results = pool.starmap(two_sided_search, grid)
+        with open('../../output/grid_search_results.csv', 'a') as file:
+            print('tag,cost')
+            for tag, cost in results:
+                print(f'{tag},{cost:.0f}', file=file)
 
 
 def single_search():
     corner = False
-    max_links = 8
-    nearby_direction = 'down'
+    max_links = 6
+    nearby_direction = 'up'
     nearby_threshold = 5.0
     save = True
 
-    tag = f'{corner=}-{max_links=}-{nearby_direction}-{nearby_threshold:4.2f}'
-    tag, cost = search(corner, max_links, nearby_direction, nearby_threshold, tag,
-                       save=save)
+    tag = f'two_sided-{corner=}-{max_links=}-{nearby_direction}-{nearby_threshold:4.2f}'
+    tag, cost = two_sided_search(corner, max_links, nearby_direction, nearby_threshold,
+                                 tag,
+                                 save=save,
+                                 number_of_links=8,
+                                 )
     print(tag, cost)
 
 
