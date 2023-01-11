@@ -1,5 +1,6 @@
 from functools import *
 from itertools import *
+from itertools import combinations, product
 from math import sqrt
 
 import numpy as np
@@ -224,3 +225,17 @@ def string_to_config(row_string):
     return list(b)
 
 
+def rotate_n_links(config, link_idxs, directions):
+    config = config.copy()
+    assert len(link_idxs) == len(directions)
+    for i, direction in zip(link_idxs, directions):
+        config[i] = rotate_link(config[i], direction)
+    return config
+
+
+def get_n_link_rotations(config, n):
+    rotations = []
+    for comb in reversed(list(combinations(range(len(config)), r=n))):
+        for direction in product((-1, 1), repeat=n):
+            rotations.append(rotate_n_links(config, comb, direction))
+    return rotations

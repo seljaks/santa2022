@@ -3,6 +3,7 @@ from multiprocessing import Pool
 from tqdm import tqdm
 
 from santa_2022.common import *
+from santa_2022.common import get_n_link_rotations
 from santa_2022.post_processing import run_remove, save_submission, \
     save_descriptive_stats, path_to_arrows, plot_path_over_image
 
@@ -168,22 +169,6 @@ def get_below_127(config):
         return x, y
     else:
         return x, y
-
-
-def rotate_n_links(config, link_idxs, directions):
-    config = config.copy()
-    assert len(link_idxs) == len(directions)
-    for i, direction in zip(link_idxs, directions):
-        config[i] = rotate_link(config[i], direction)
-    return config
-
-
-def get_n_link_rotations(config, n):
-    rotations = []
-    for comb in reversed(list(combinations(range(len(config)), r=n))):
-        for direction in product((-1, 1), repeat=n):
-            rotations.append(rotate_n_links(config, comb, direction))
-    return rotations
 
 
 def get_unvisited(neighbors, unvisited):
