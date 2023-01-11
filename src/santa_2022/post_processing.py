@@ -1,5 +1,3 @@
-from matplotlib import pyplot as plt
-
 from santa_2022.common import *
 import pandas as pd
 
