@@ -1,6 +1,6 @@
 import pytest
 
-from santa_2022.original import *
+from santa_2022.greedy import *
 
 
 def test_get_position(origin):

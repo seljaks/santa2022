@@ -1,4 +1,4 @@
-from santa_2022.original import *
+from santa_2022.greedy import *
 from santa_2022.array import *
 
 
