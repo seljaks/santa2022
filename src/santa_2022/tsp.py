@@ -3,6 +3,8 @@ import pandas as pd
 from santa_2022.common import *
 from santa_2022.post_processing import *
 
+from tqdm import tqdm
+
 
 def generate_point_map(n):
     """Makes a list of points from without (0, 0), starts at (0, -1) and ends there"""
@@ -170,6 +172,17 @@ def xy_to_hash(x, y, no_rows):
     return x * no_rows + y
 
 
+def reconf_cost_from_position(from_position, to_position):
+    return np.sqrt((np.abs(np.asarray(from_position) - np.asarray(to_position))).sum())
+
+
+def tsp_cost(from_position, to_position, image, color_scale=3.0):
+    color_part = color_cost(from_position, to_position, image, color_scale=color_scale)
+    reconf_part = reconf_cost_from_position(from_position, to_position)
+    assert reconf_part == 1.0
+    return color_part + reconf_part
+
+
 def generate_lkh_file(number_of_links=8):
     assert 2 <= number_of_links <= 8
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
@@ -180,8 +193,69 @@ def generate_lkh_file(number_of_links=8):
         assert get_position(origin) == (0, 0)
         image = sliced_image(origin, image)
 
+    cartesian_limit = origin[0][0] * 2
+    no_rows = origin[0][0] * 4 + 1
+    assert no_rows == image.shape[0] == image.shape[1]
+    print(no_rows)
+    maximum = 10000.
+    no_nodes = no_rows ** 2 - 1
+    count = 0
+    past_origin = 0
+    with open(f'santa2022-{number_of_links}.tsp', 'w') as file:
+        file.write('NAME : test\n')
+        file.write('TYPE : TSP\n')
+        file.write('COMMENT : TEST\n')
+        file.write(f'DIMENSION : {no_nodes}\n')
+        file.write('EDGE_WEIGHT_TYPE : EXPLICIT\n')
+        file.write('EDGE_WEIGHT_FORMAT : UPPER_ROW\n')
+        file.write('EDGE_WEIGHT_SECTION\n')
+        for i in tqdm(range(no_nodes)):
+            line = [maximum] * (no_nodes - 1 - i + past_origin)
+            x, y = hash_to_xy(i, no_rows)
+            cart_x, cart_y = array_to_cartesian(x, y, image.shape)
+            ignore_right = False
+            ignore_bottom = False
 
-def main():
+            if cart_x == 0 and cart_y == 1:
+                ignore_bottom = True
+            if cart_x == -1 and cart_y == 0:
+                ignore_right = True
+            if cart_x == 0 and cart_y == 0:
+                past_origin = 1
+                continue
+
+            if cart_x == 0 and 0 < cart_y < cartesian_limit:
+                ignore_right = True
+            if cart_x == -1 and 0 > cart_y > -cartesian_limit:
+                ignore_right = True
+            if cart_y == 1 and 0 > cart_x > -cartesian_limit:
+                ignore_bottom = True
+            if cart_y == 0 and 0 < cart_x < cartesian_limit:
+                ignore_bottom = True
+
+            if cart_x == cartesian_limit:
+                ignore_right = True
+            if cart_y == -cartesian_limit:
+                ignore_bottom = True
+
+            if ignore_right and ignore_bottom:
+                pass
+            elif ignore_right:
+                line[no_rows - 1] = tsp_cost((x, y), (x+1, y), image)
+            elif ignore_bottom:
+                line[0] = tsp_cost((x, y), (x, y+1), image)
+            else:
+                line[0] = tsp_cost((x, y), (x, y+1), image)
+                line[no_rows - 1] = tsp_cost((x, y), (x+1, y), image)
+
+            line = [f'{fl:.6g}' for fl in line]
+            count += len(line)
+            file.write(' '.join(line) + '\n')
+        assert count == no_nodes * (no_nodes - 1) // 2
+        file.write('EOF')
+
+
+def single_search():
     df_image = pd.read_csv("../../data/image.csv")
     image = df_to_image(df_image)
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
@@ -195,6 +269,10 @@ def main():
     plot_path_over_image(origin, df,
                          save_path=f'../../output/images/{file_name}.png',
                          image=image)
+
+
+def main():
+    generate_lkh_file(number_of_links=2)
 
 
 if __name__ == '__main__':

@@ -212,3 +212,29 @@ def test_top_left_point_to_config(x, y, n, expected):
 def test_bot_right_point_to_config(x, y, n, expected):
     result = bot_right_point_to_config(x, y, n=n)
     assert result == expected
+
+
+def test_xy_to_hash():
+    no_rows = 5
+    h = no_rows // 2
+    points = []
+    for y in reversed(range(-h, h + 1)):
+        for x in range(-h, h + 1):
+            points.append((cartesian_to_array(x, y, (no_rows, no_rows))))
+    hashed = [xy_to_hash(x, y, no_rows) for x, y in points]
+    assert hashed == list(range(no_rows ** 2))
+
+
+def test_hast_to_xy():
+    no_rows = 5
+    hashed = list(range(no_rows ** 2))
+
+    h = no_rows // 2
+    points = []
+    for y in reversed(range(-h, h + 1)):
+        for x in range(-h, h + 1):
+            points.append((x, y))
+
+    unhashed = [array_to_cartesian(*hash_to_xy(i, no_rows), (no_rows, no_rows)) for i in
+                hashed]
+    assert unhashed == points
