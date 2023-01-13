@@ -3,7 +3,7 @@ from multiprocessing import Pool
 from tqdm import tqdm
 
 from santa_2022.common import *
-from santa_2022.common import get_n_link_rotations
+from santa_2022.common import get_n_link_rotations, sliced_image
 from santa_2022.post_processing import run_remove, save_submission, \
     save_descriptive_stats, path_to_arrows, plot_path_over_image
 
@@ -178,17 +178,6 @@ def get_unvisited(neighbors, unvisited):
 def get_unvisited_with_costs(current_config, unvisited_neighbors, image):
     costs = [step_cost(current_config, c, image) for c in unvisited_neighbors]
     return list(zip(unvisited_neighbors, costs))
-
-
-def sliced_image(config, image):
-    n = config[0][0] * 2
-
-    top_left = cartesian_to_array(*(-n, n), image.shape)
-    bottom_right = cartesian_to_array(*(n, -n), image.shape)
-
-    sliced = image[
-             top_left[0]:bottom_right[0] + 1, top_left[1]:bottom_right[1] + 1, :]
-    return sliced
 
 
 def merge_path_and_information(path, info):

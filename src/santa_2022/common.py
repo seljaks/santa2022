@@ -239,3 +239,14 @@ def get_n_link_rotations(config, n):
         for direction in product((-1, 1), repeat=n):
             rotations.append(rotate_n_links(config, comb, direction))
     return rotations
+
+
+def sliced_image(config, image):
+    n = config[0][0] * 2
+
+    top_left = cartesian_to_array(*(-n, n), image.shape)
+    bottom_right = cartesian_to_array(*(n, -n), image.shape)
+
+    sliced = image[
+             top_left[0]:bottom_right[0] + 1, top_left[1]:bottom_right[1] + 1, :]
+    return sliced

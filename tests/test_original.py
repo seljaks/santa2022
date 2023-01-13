@@ -116,33 +116,3 @@ def test_get_two_link_rotations(mini_arm):
 
     two_link_neighbors = get_n_link_rotations(mini_arm, 2)
     assert sorted(expected) == sorted(two_link_neighbors)
-
-
-def test_one_two_link_neighbors(mini_arm):
-    expected = [  # rotate link 0
-        [(2, 1), (-1, 0), (-1, 0)],
-        [(2, -1), (-1, 0), (-1, 0)],
-        # rotate link 1
-        [(2, 0), (-1, 1), (-1, 0)],
-        [(2, 0), (-1, -1), (-1, 0)],
-        # rotate link 2
-        [(2, 0), (-1, 0), (-1, 1)],
-        [(2, 0), (-1, 0), (-1, -1)],
-        # rotate link 0, 1
-        [(2, 1), (-1, 1), (-1, 0)],
-        [(2, 1), (-1, -1), (-1, 0)],
-        [(2, -1), (-1, 1), (-1, 0)],
-        [(2, -1), (-1, -1), (-1, 0)],
-        # rotate link 0, 2
-        [(2, 1), (-1, 0), (-1, 1)],
-        [(2, 1), (-1, 0), (-1, -1)],
-        [(2, -1), (-1, 0), (-1, 1)],
-        [(2, -1), (-1, 0), (-1, -1)],
-        # rotate link 1, 2
-        [(2, 0), (-1, 1), (-1, 1)],
-        [(2, 0), (-1, 1), (-1, -1)],
-        [(2, 0), (-1, -1), (-1, 1)],
-        [(2, 0), (-1, -1), (-1, -1)],
-    ]
-
-    assert sorted(expected) == sorted(get_one_two_link_neighbors(mini_arm))
