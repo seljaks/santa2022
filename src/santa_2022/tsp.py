@@ -4,6 +4,8 @@ from santa_2022.common import *
 from santa_2022.post_processing import *
 
 from tqdm import tqdm
+from math import isqrt
+from math import log2
 
 
 def generate_point_map(n):
@@ -51,7 +53,7 @@ def generate_point_map(n):
     return points
 
 
-def point_map_to_path(n):
+def point_map_to_path(n, point_map=None):
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
     # setup if testing behavior on smaller version of image
     if n < 8:
@@ -61,13 +63,14 @@ def point_map_to_path(n):
     assert origin[0][0] == 2 ** (n - 2)
     no_points = origin[0][0] * 2
 
+    if point_map is None:
+        point_map = generate_point_map(no_points)
+
     path = [origin]
-    initial_position = [(64, 63), (-32, -32), (-16, -16), (-8, -8), (-4, -4), (-2, -2),
-                        (-1, -1),
-                        (-1, -1)]
+    initial_position = bot_right_point_to_config(0, -1, n=n)
     start_move = get_path_to_configuration(origin, initial_position)[1:-1]
     path.extend(start_move)
-    for x, y in generate_point_map(no_points):
+    for x, y in tqdm(point_map):
         config = path[-1]
         if x == 0 and y == 0:
             candidate = origin.copy()
@@ -82,9 +85,14 @@ def point_map_to_path(n):
         else:
             candidate = None
             raise ValueError('unreachable')
-        assert candidate in get_n_link_rotations(config,
-                                                 1), f'{config=}, {candidate=}, {get_position(candidate)=}'
-        path.append(candidate)
+        if config != origin:
+                # assert candidate in get_n_link_rotations(config, 1), f'{config=}, {candidate=}, {get_position(candidate)=}'
+            if candidate not in get_n_link_rotations(config, 1):
+                extension = get_path_to_configuration(config, candidate)[1:]
+                path.extend(extension)
+            else:
+                path.append(candidate)
+
     ending_position = path[-1]
     assert get_position(ending_position) == (0, -1)
     ending_move = get_path_to_configuration(ending_position, origin)[1:]
@@ -199,18 +207,18 @@ def generate_lkh_file(number_of_links=8):
     print(no_rows)
     maximum = 10000.
     no_nodes = no_rows ** 2 - 1
-    count = 0
+    hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image.shape), no_rows)
+    print(hashed_origin)
     past_origin = 0
-    with open(f'santa2022-{number_of_links}.tsp', 'w') as file:
-        file.write('NAME : test\n')
+    with open(f'santa2022-{number_of_links}-edge_list.tsp', 'w') as file:
+        file.write(f'NAME : santa2022-{number_of_links}\n')
         file.write('TYPE : TSP\n')
         file.write('COMMENT : TEST\n')
         file.write(f'DIMENSION : {no_nodes}\n')
-        file.write('EDGE_WEIGHT_TYPE : EXPLICIT\n')
-        file.write('EDGE_WEIGHT_FORMAT : UPPER_ROW\n')
-        file.write('EDGE_WEIGHT_SECTION\n')
+        file.write('EDGE_WEIGHT_TYPE : SPECIAL\n')
+        file.write('EDGE_DATA_FORMAT : EDGE_LIST\n')
+        file.write('EDGE_DATA_SECTION\n')
         for i in tqdm(range(no_nodes)):
-            line = [maximum] * (no_nodes - 1 - i + past_origin)
             x, y = hash_to_xy(i, no_rows)
             cart_x, cart_y = array_to_cartesian(x, y, image.shape)
             ignore_right = False
@@ -238,21 +246,119 @@ def generate_lkh_file(number_of_links=8):
             if cart_y == -cartesian_limit:
                 ignore_bottom = True
 
+            hashed_pos = i
+            if hashed_pos > hashed_origin:
+                hashed_pos -= 1
+
             if ignore_right and ignore_bottom:
                 pass
-            elif ignore_right:
-                line[no_rows - 1] = tsp_cost((x, y), (x+1, y), image)
             elif ignore_bottom:
-                line[0] = tsp_cost((x, y), (x, y+1), image)
+                right = x, y + 1
+                hashed_right = xy_to_hash(*right, no_rows)
+                if hashed_right > hashed_origin:
+                    hashed_right -= 1
+                cost_right = tsp_cost((x, y), right, image) * 1000000
+                file.write(f'{hashed_pos + 1} {hashed_right + 1} {int(cost_right)}\n')
+            elif ignore_right:
+                bot = x + 1, y
+                hashed_bot = xy_to_hash(*bot, no_rows)
+                if hashed_bot > hashed_origin:
+                    hashed_bot -= 1
+                cost_bot = tsp_cost((x, y), bot, image) * 1000000
+                file.write(f'{hashed_pos + 1} {hashed_bot + 1} {int(cost_bot)}\n')
             else:
-                line[0] = tsp_cost((x, y), (x, y+1), image)
-                line[no_rows - 1] = tsp_cost((x, y), (x+1, y), image)
+                right = x, y + 1
+                hashed_right = xy_to_hash(*right, no_rows)
+                if hashed_right > hashed_origin:
+                    hashed_right -= 1
+                cost_right = tsp_cost((x, y), right, image) * 1000000
+                file.write(f'{hashed_pos + 1} {hashed_right + 1} {int(cost_right)}\n')
 
-            line = [f'{fl:.6g}' for fl in line]
-            count += len(line)
-            file.write(' '.join(line) + '\n')
-        assert count == no_nodes * (no_nodes - 1) // 2
+                bot = x + 1, y
+                hashed_bot = xy_to_hash(*bot, no_rows)
+                if hashed_bot > hashed_origin:
+                    hashed_bot -= 1
+                cost_bot = tsp_cost((x, y), bot, image) * 1000000
+                file.write(f'{hashed_pos + 1} {hashed_bot + 1} {int(cost_bot)}\n')
+
         file.write('EOF')
+
+
+def generate_lkh_initial_tour(number_of_links=8):
+    assert 2 <= number_of_links <= 8
+    origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
+    # setup if testing behavior on smaller version of image
+    if number_of_links < 8:
+        origin = origin[-number_of_links:]
+        origin[0] = (abs(origin[0][0]), abs(origin[0][1]))
+
+    assert origin[0][0] == 2 ** (number_of_links - 2)
+    no_points = origin[0][0] * 2
+    no_rows = origin[0][0] * 4 + 1
+    shape = no_rows, no_rows
+
+    points = generate_point_map(no_points)[:-1]
+    hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, shape), no_rows)
+    hashed_points = (
+        xy_to_hash(*cartesian_to_array(*point, shape), no_rows) for point
+        in points)
+    hashed_points = [hp + 1 if hp <= hashed_origin else hp for hp in hashed_points]
+
+    one_idx = hashed_points.index(1)
+    ordered_points = hashed_points[one_idx:] + hashed_points[:one_idx]
+
+    return ordered_points
+
+
+def lkh_solution_to_point_map(file_name):
+    hashed_solution = []
+    tour_section = False
+    tour_length = None
+    with open(file_name, 'r') as file:
+        for line in file.readlines():
+            stripped = line.strip()
+            if stripped.startswith('DIMENSION'):
+                tour_length = int(stripped.partition(':')[2].strip())
+            if stripped == '-1':
+                break
+            if tour_section:
+                hashed_solution.append(int(stripped))
+            if stripped == 'TOUR_SECTION':
+                tour_section = True
+                continue
+    assert tour_length == len(hashed_solution)
+
+    image_size = tour_length + 1
+    no_rows = isqrt(image_size)
+    assert image_size == no_rows ** 2
+    image_shape = no_rows, no_rows
+    hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image_shape), no_rows)
+    print(hashed_origin)
+
+    origin_zz = (isqrt(image_size) - 1) // 4
+    check_n = log2(origin_zz)
+    assert check_n == int(check_n)
+    number_of_links = int(check_n) + 2
+
+    hashed_solution = [hp - 1 if hp <= hashed_origin else hp for hp in hashed_solution]
+    check_hash = list(range(image_size))
+    check_hash.remove(hashed_origin)
+    assert sorted(hashed_solution) == sorted(check_hash), f'{len(hashed_solution)=}, {len(check_hash)=}, {min(hashed_solution), max(hashed_solution)}, {len(set(hashed_solution))=}'
+
+    cartesian_solution = [array_to_cartesian(*hash_to_xy(hp, no_rows), image_shape) for
+                          hp in hashed_solution]
+
+    start_index = cartesian_solution.index((0, -1))
+    ordered_cartesian = cartesian_solution[start_index:] + cartesian_solution[
+                                                           :start_index]
+
+    ordered_cartesian.append((0, -1))
+    check_cartesian = generate_point_map(origin_zz * 2)
+    assert sorted(ordered_cartesian) == sorted(check_cartesian), f'{len(check_cartesian)=}, {len(ordered_cartesian)=}'
+
+    path = point_map_to_path(number_of_links, ordered_cartesian)
+
+    return path, number_of_links
 
 
 def single_search():
@@ -271,8 +377,32 @@ def single_search():
                          image=image)
 
 
+def lkh_search():
+    df_image = pd.read_csv("../../data/image.csv")
+    image = df_to_image(df_image)
+    origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
+
+    lkh_output = 'santa2022-8-output.txt'
+    path, number_of_links = lkh_solution_to_point_map(lkh_output)
+
+    if number_of_links < 8:
+        origin = origin[-number_of_links:]
+        origin[0] = (abs(origin[0][0]), abs(origin[0][1]))
+        assert get_position(origin) == (0, 0)
+        image = sliced_image(origin, image)
+
+    print(total_cost(path, image))
+
+    file_name = '8-link-lkh-solution'
+    save_submission(path, file_name)
+    df = path_to_arrows(path)
+    plot_path_over_image(origin, df,
+                         save_path=f'../../output/images/{file_name}.png',
+                         image=image)
+
+
 def main():
-    generate_lkh_file(number_of_links=2)
+    lkh_search()
 
 
 if __name__ == '__main__':

@@ -5,7 +5,6 @@ from santa_2022.tsp import *
 
 def test_generate_point_map():
     expected = [
-        (0, 0),
         (0, -1),
         (0, -2),
         (-1, -2),
@@ -31,7 +30,6 @@ def test_generate_point_map():
         (1, -2),
         (1, -1),
         (0, -1),
-        (0, 0),
     ]
     result = generate_point_map(2)
     assert expected == result
@@ -238,3 +236,32 @@ def test_hast_to_xy():
     unhashed = [array_to_cartesian(*hash_to_xy(i, no_rows), (no_rows, no_rows)) for i in
                 hashed]
     assert unhashed == points
+
+
+def test_hashed_points():
+    expected = [1,
+                2,
+                7,
+                8,
+                3,
+                4,
+                5,
+                10,
+                9,
+                13,
+                14,
+                19,
+                24,
+                23,
+                18,
+                17,
+                22,
+                21,
+                20,
+                15,
+                16,
+                12,
+                11,
+                6]
+    result = generate_lkh_initial_tour(number_of_links=2)
+    assert result == expected
