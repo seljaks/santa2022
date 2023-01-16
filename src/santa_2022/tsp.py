@@ -86,7 +86,7 @@ def point_map_to_path(n, point_map=None):
             candidate = None
             raise ValueError('unreachable')
         if config != origin:
-                # assert candidate in get_n_link_rotations(config, 1), f'{config=}, {candidate=}, {get_position(candidate)=}'
+            # assert candidate in get_n_link_rotations(config, 1), f'{config=}, {candidate=}, {get_position(candidate)=}'
             if candidate not in get_n_link_rotations(config, 1):
                 extension = get_path_to_configuration(config, candidate)[1:]
                 path.extend(extension)
@@ -187,7 +187,7 @@ def reconf_cost_from_position(from_position, to_position):
 def tsp_cost(from_position, to_position, image, color_scale=3.0):
     color_part = color_cost(from_position, to_position, image, color_scale=color_scale)
     reconf_part = reconf_cost_from_position(from_position, to_position)
-    assert reconf_part == 1.0
+    assert reconf_part <= sqrt(2)
     return color_part + reconf_part
 
 
@@ -208,7 +208,8 @@ def generate_lkh_file(number_of_links=8):
     no_nodes = no_rows ** 2 - 1
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image.shape), no_rows)
     print(hashed_origin)
-    with open(f'santa2022-{number_of_links}-edge_list-new.tsp', 'w') as file:
+    edge_count = 0
+    with open(f'santa2022-{number_of_links}-edge_list-diagonal.tsp', 'w') as file:
         file.write(f'NAME : santa2022-{number_of_links}\n')
         file.write('TYPE : TSP\n')
         file.write('COMMENT : TEST\n')
@@ -221,63 +222,124 @@ def generate_lkh_file(number_of_links=8):
             cart_x, cart_y = array_to_cartesian(x, y, image.shape)
             ignore_right = False
             ignore_bottom = False
+            ignore_bot_left = False
+            ignore_bot_right = False
 
-            if cart_x == 0 and cart_y == 1:
-                ignore_bottom = True
-            if cart_x == -1 and cart_y == 0:
-                ignore_right = True
             if cart_x == 0 and cart_y == 0:
                 continue
+            if cart_x == 0 and cart_y == 1:
+                ignore_bottom = True
+                ignore_bot_right = True
+                ignore_bot_left = True
+            if cart_x == -1 and cart_y == 0:
+                ignore_right = True
+                ignore_bot_right = True
+            if cart_x == -1 and cart_y == 1:
+                ignore_bottom = True
+                ignore_bot_right = True
+            if cart_x == 1 and cart_y == 1:
+                ignore_bot_left = True
+            if cart_x == 1 and cart_y == 0:
+                ignore_bottom = True
+                ignore_bot_left = True
+                ignore_bot_right = True
+            if cart_x == -1 and cart_y == -1:
+                ignore_right = True
+            if cart_x == 0 and cart_y == -1:
+                ignore_bot_left = True
 
             if cart_x == 0 and 0 < cart_y < cartesian_limit:
                 ignore_right = True
-            if cart_x == -1 and 0 > cart_y > -cartesian_limit:
+                ignore_bot_right = True
+            if cart_x == -1 and 0 > cart_y > -(cartesian_limit - 1):
                 ignore_right = True
-            if cart_y == 1 and 0 > cart_x > -cartesian_limit:
+                ignore_bot_right = True
+            if cart_x == -1 and cart_y == -(cartesian_limit - 1):
+                ignore_right = True
+            if cart_x == 1 and 0 <= cart_y <= cartesian_limit:
+                ignore_bot_left = True
+            if cart_x == 0 and 0 > cart_y >= -cartesian_limit:
+                ignore_bot_left = True
+
+            if cart_y == 1 and 0 > cart_x > -(cartesian_limit - 1):
                 ignore_bottom = True
+                ignore_bot_left = True
+                ignore_bot_right = True
+            if cart_y == 1 and cart_x == -(cartesian_limit - 1):
+                ignore_bottom = True
+                ignore_bot_right = True
+            if cart_y == 1 and cart_x == -cartesian_limit:
+                ignore_bot_right = True
             if cart_y == 0 and 0 < cart_x < cartesian_limit:
                 ignore_bottom = True
+                ignore_bot_left = True
+                ignore_bot_right = True
 
+            if cart_x == -cartesian_limit:
+                ignore_bot_left = True
             if cart_x == cartesian_limit:
                 ignore_right = True
+                ignore_bot_right = True
             if cart_y == -cartesian_limit:
                 ignore_bottom = True
+                ignore_bot_left = True
+                ignore_bot_right = True
 
             hashed_pos = i
             if hashed_pos <= hashed_origin:
                 hashed_pos += 1
 
-            if ignore_right and ignore_bottom:
+            if ignore_right and ignore_bottom and ignore_bot_left and ignore_bot_right:
                 pass
-            elif ignore_bottom:
-                right = x, y + 1
-                hashed_right = xy_to_hash(*right, no_rows)
-                if hashed_right <= hashed_origin:
-                    hashed_right += 1
-                cost_right = tsp_cost((x, y), right, image) * 1000000
-                file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
-            elif ignore_right:
-                bot = x + 1, y
-                hashed_bot = xy_to_hash(*bot, no_rows)
-                if hashed_bot <= hashed_origin:
-                    hashed_bot += 1
-                cost_bot = tsp_cost((x, y), bot, image) * 1000000
-                file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
-            else:
-                right = x, y + 1
-                hashed_right = xy_to_hash(*right, no_rows)
-                if hashed_right <= hashed_origin:
-                    hashed_right += 1
-                cost_right = tsp_cost((x, y), right, image) * 1000000
-                file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
 
-                bot = x + 1, y
-                hashed_bot = xy_to_hash(*bot, no_rows)
-                if hashed_bot <= hashed_origin:
-                    hashed_bot += 1
-                cost_bot = tsp_cost((x, y), bot, image) * 1000000
-                file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
+            edges = [ignore_right,
+                     ignore_bottom,
+                     ignore_bot_left,
+                     ignore_bot_right]
+            nodes = [(x, y + 1),
+                     (x + 1, y),
+                     (x + 1, y - 1),
+                     (x + 1, y + 1)]
 
+            for j, edge in enumerate(edges):
+                if not edge:
+                    edge_count += 1
+                    node = nodes[j]
+                    hashed_node = xy_to_hash(*node, no_rows)
+                    if hashed_node <= hashed_origin:
+                        hashed_node += 1
+                    cost = tsp_cost((x, y), node, image) * 1000
+                    file.write(f'{hashed_pos} {hashed_node} {int(cost)}\n')
+
+            # if ignore_bottom:
+            #     right = x, y + 1
+            #     hashed_right = xy_to_hash(*right, no_rows)
+            #     if hashed_right <= hashed_origin:
+            #         hashed_right += 1
+            #     cost_right = tsp_cost((x, y), right, image) * 1000000
+            #     file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
+            # elif ignore_right:
+            #     bot = x + 1, y
+            #     hashed_bot = xy_to_hash(*bot, no_rows)
+            #     if hashed_bot <= hashed_origin:
+            #         hashed_bot += 1
+            #     cost_bot = tsp_cost((x, y), bot, image) * 1000000
+            #     file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
+            # else:
+            #     right = x, y + 1
+            #     hashed_right = xy_to_hash(*right, no_rows)
+            #     if hashed_right <= hashed_origin:
+            #         hashed_right += 1
+            #     cost_right = tsp_cost((x, y), right, image) * 1000000
+            #     file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
+            #
+            #     bot = x + 1, y
+            #     hashed_bot = xy_to_hash(*bot, no_rows)
+            #     if hashed_bot <= hashed_origin:
+            #         hashed_bot += 1
+            #     cost_bot = tsp_cost((x, y), bot, image) * 1000000
+            #     file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
+        print(edge_count)
         file.write('EOF')
 
 
@@ -340,7 +402,8 @@ def lkh_solution_to_point_map(file_name):
     hashed_solution = [hp - 1 if hp <= hashed_origin else hp for hp in hashed_solution]
     check_hash = list(range(image_size))
     check_hash.remove(hashed_origin)
-    assert sorted(hashed_solution) == sorted(check_hash), f'{len(hashed_solution)=}, {len(check_hash)=}, {min(hashed_solution), max(hashed_solution)}, {len(set(hashed_solution))=}'
+    assert sorted(hashed_solution) == sorted(
+        check_hash), f'{len(hashed_solution)=}, {len(check_hash)=}, {min(hashed_solution), max(hashed_solution)}, {len(set(hashed_solution))=}'
 
     cartesian_solution = [array_to_cartesian(*hash_to_xy(hp, no_rows), image_shape) for
                           hp in hashed_solution]
@@ -351,7 +414,8 @@ def lkh_solution_to_point_map(file_name):
 
     ordered_cartesian.append((0, -1))
     check_cartesian = generate_point_map(origin_zz * 2)
-    assert sorted(ordered_cartesian) == sorted(check_cartesian), f'{len(check_cartesian)=}, {len(ordered_cartesian)=}'
+    assert sorted(ordered_cartesian) == sorted(
+        check_cartesian), f'{len(check_cartesian)=}, {len(ordered_cartesian)=}'
 
     path = point_map_to_path(number_of_links, ordered_cartesian)
 
@@ -404,7 +468,7 @@ def lkh_search():
 
 
 def main():
-    generate_lkh_file(number_of_links=2)
+    generate_lkh_file(number_of_links=8)
 
 
 if __name__ == '__main__':
