@@ -393,7 +393,12 @@ def lkh_search():
 
     print(total_cost(path, image))
 
-    file_name = '8-link-lkh-solution'
+    path = run_remove(path)
+    path = run_remove(path)
+
+    print(total_cost(path, image))
+
+    file_name = '8-link-lkh-solution-init-tour-5-opt-new-dedupx2'
     save_submission(path, file_name)
     df = path_to_arrows(path)
     plot_path_over_image(origin, df,
