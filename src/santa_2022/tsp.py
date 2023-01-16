@@ -155,7 +155,7 @@ def top_right_point_to_config(x, y, n=8):
 
 
 def bot_right_point_to_config(x, y, n=8):
-    """main link is (-L, x), others are (x, L)."""
+    """main link is (L, x), others are (x, -L)."""
     assert x >= 0 and y <= -1, "This function is only for the bot left quadrant"
     assert n >= 2, "Not enough links"
     r = 2 ** (n - 2)
@@ -443,7 +443,7 @@ def lkh_search():
     image = df_to_image(df_image)
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
 
-    lkh_output = 'santa2022-8-output.txt'
+    lkh_output = 'santa2022-8-output-diag.txt'
     path, number_of_links = lkh_solution_to_point_map(lkh_output)
 
     if number_of_links < 8:
@@ -459,7 +459,7 @@ def lkh_search():
 
     print(total_cost(path, image))
 
-    file_name = '8-link-lkh-solution-init-tour-5-opt-new-dedupx2'
+    file_name = lkh_output[:-4] + '-dedupx2'
     save_submission(path, file_name)
     df = path_to_arrows(path)
     plot_path_over_image(origin, df,
@@ -468,7 +468,7 @@ def lkh_search():
 
 
 def main():
-    generate_lkh_file(number_of_links=8)
+    lkh_search()
 
 
 if __name__ == '__main__':
