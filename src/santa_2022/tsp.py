@@ -205,12 +205,10 @@ def generate_lkh_file(number_of_links=8):
     no_rows = origin[0][0] * 4 + 1
     assert no_rows == image.shape[0] == image.shape[1]
     print(no_rows)
-    maximum = 10000.
     no_nodes = no_rows ** 2 - 1
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image.shape), no_rows)
     print(hashed_origin)
-    past_origin = 0
-    with open(f'santa2022-{number_of_links}-edge_list.tsp', 'w') as file:
+    with open(f'santa2022-{number_of_links}-edge_list-new.tsp', 'w') as file:
         file.write(f'NAME : santa2022-{number_of_links}\n')
         file.write('TYPE : TSP\n')
         file.write('COMMENT : TEST\n')
@@ -229,7 +227,6 @@ def generate_lkh_file(number_of_links=8):
             if cart_x == -1 and cart_y == 0:
                 ignore_right = True
             if cart_x == 0 and cart_y == 0:
-                past_origin = 1
                 continue
 
             if cart_x == 0 and 0 < cart_y < cartesian_limit:
@@ -247,39 +244,39 @@ def generate_lkh_file(number_of_links=8):
                 ignore_bottom = True
 
             hashed_pos = i
-            if hashed_pos > hashed_origin:
-                hashed_pos -= 1
+            if hashed_pos <= hashed_origin:
+                hashed_pos += 1
 
             if ignore_right and ignore_bottom:
                 pass
             elif ignore_bottom:
                 right = x, y + 1
                 hashed_right = xy_to_hash(*right, no_rows)
-                if hashed_right > hashed_origin:
-                    hashed_right -= 1
+                if hashed_right <= hashed_origin:
+                    hashed_right += 1
                 cost_right = tsp_cost((x, y), right, image) * 1000000
-                file.write(f'{hashed_pos + 1} {hashed_right + 1} {int(cost_right)}\n')
+                file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
             elif ignore_right:
                 bot = x + 1, y
                 hashed_bot = xy_to_hash(*bot, no_rows)
-                if hashed_bot > hashed_origin:
-                    hashed_bot -= 1
+                if hashed_bot <= hashed_origin:
+                    hashed_bot += 1
                 cost_bot = tsp_cost((x, y), bot, image) * 1000000
-                file.write(f'{hashed_pos + 1} {hashed_bot + 1} {int(cost_bot)}\n')
+                file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
             else:
                 right = x, y + 1
                 hashed_right = xy_to_hash(*right, no_rows)
-                if hashed_right > hashed_origin:
-                    hashed_right -= 1
+                if hashed_right <= hashed_origin:
+                    hashed_right += 1
                 cost_right = tsp_cost((x, y), right, image) * 1000000
-                file.write(f'{hashed_pos + 1} {hashed_right + 1} {int(cost_right)}\n')
+                file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
 
                 bot = x + 1, y
                 hashed_bot = xy_to_hash(*bot, no_rows)
-                if hashed_bot > hashed_origin:
-                    hashed_bot -= 1
+                if hashed_bot <= hashed_origin:
+                    hashed_bot += 1
                 cost_bot = tsp_cost((x, y), bot, image) * 1000000
-                file.write(f'{hashed_pos + 1} {hashed_bot + 1} {int(cost_bot)}\n')
+                file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
 
         file.write('EOF')
 
@@ -407,7 +404,7 @@ def lkh_search():
 
 
 def main():
-    lkh_search()
+    generate_lkh_file(number_of_links=2)
 
 
 if __name__ == '__main__':
