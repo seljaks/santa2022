@@ -49,7 +49,6 @@ def generate_point_map(n):
             points.append(p)
 
     assert len(points) == (2 * n + 1) ** 2 - 1
-    points.append((0, -1))
     return points
 
 
@@ -67,7 +66,7 @@ def point_map_to_path(n, point_map=None):
         point_map = generate_point_map(no_points)
 
     path = [origin]
-    initial_position = bot_right_point_to_config(0, -1, n=n)
+    initial_position = bot_right_point_to_config(*point_map[0], n=n)
     start_move = get_path_to_configuration(origin, initial_position)[1:-1]
     path.extend(start_move)
     for x, y in tqdm(point_map):
@@ -87,14 +86,15 @@ def point_map_to_path(n, point_map=None):
             raise ValueError('unreachable')
         if config != origin:
             # assert candidate in get_n_link_rotations(config, 1), f'{config=}, {candidate=}, {get_position(candidate)=}'
-            if candidate not in get_n_link_rotations(config, 1):
-                extension = get_path_to_configuration(config, candidate)[1:]
-                path.extend(extension)
+            if candidate not in get_n_link_rotations(config, 1) + get_n_link_rotations(
+                    config, 2):
+                raise ValueError('weird path')
+                # extension = get_path_to_configuration(config, candidate)[1:]
+                # path.extend(extension)
             else:
                 path.append(candidate)
 
     ending_position = path[-1]
-    assert get_position(ending_position) == (0, -1)
     ending_move = get_path_to_configuration(ending_position, origin)[1:]
     path.extend(ending_move)
     return path
@@ -369,7 +369,7 @@ def generate_lkh_initial_tour(number_of_links=8):
     return ordered_points
 
 
-def lkh_solution_to_point_map(file_name):
+def lkh_solution_to_path(file_name):
     hashed_solution = []
     tour_section = False
     tour_length = None
@@ -408,11 +408,10 @@ def lkh_solution_to_point_map(file_name):
     cartesian_solution = [array_to_cartesian(*hash_to_xy(hp, no_rows), image_shape) for
                           hp in hashed_solution]
 
-    start_index = cartesian_solution.index((0, -1))
+    start_index = cartesian_solution.index((0, -64))
     ordered_cartesian = cartesian_solution[start_index:] + cartesian_solution[
                                                            :start_index]
 
-    ordered_cartesian.append((0, -1))
     check_cartesian = generate_point_map(origin_zz * 2)
     assert sorted(ordered_cartesian) == sorted(
         check_cartesian), f'{len(check_cartesian)=}, {len(ordered_cartesian)=}'
@@ -444,7 +443,7 @@ def lkh_search():
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
 
     lkh_output = 'santa2022-8-output-diag.txt'
-    path, number_of_links = lkh_solution_to_point_map(lkh_output)
+    path, number_of_links = lkh_solution_to_path(lkh_output)
 
     if number_of_links < 8:
         origin = origin[-number_of_links:]
@@ -459,7 +458,7 @@ def lkh_search():
 
     print(total_cost(path, image))
 
-    file_name = lkh_output[:-4] + '-dedupx2'
+    file_name = lkh_output[:-4] + '-dedup-new_start'
     save_submission(path, file_name)
     df = path_to_arrows(path)
     plot_path_over_image(origin, df,
