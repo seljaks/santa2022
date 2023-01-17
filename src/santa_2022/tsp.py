@@ -99,7 +99,8 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
                     print(f'{not_in_one_two_rot_counter=}')
         path.append(candidate)
 
-    assert end_path[0] in get_n_link_rotations(path[-1], 1), f'{end_path[0]=}, {path[-1]=}'
+    assert end_path[0] in get_n_link_rotations(path[-1],
+                                               1), f'{end_path[0]=}, {path[-1]=}'
     assert end_path[0] == bot_right_point_to_config(*get_position(end_path[0]))
     path.extend(end_path)
     return path
@@ -192,7 +193,7 @@ def reconf_cost_from_position(from_position, to_position):
 def tsp_cost(from_position, to_position, image, color_scale=3.0):
     color_part = color_cost(from_position, to_position, image, color_scale=color_scale)
     reconf_part = reconf_cost_from_position(from_position, to_position)
-    assert reconf_part <= sqrt(2)
+    assert reconf_part <= sqrt(3)
     return color_part + reconf_part
 
 
@@ -214,7 +215,7 @@ def generate_lkh_file(number_of_links=8):
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image.shape), no_rows)
     print(hashed_origin)
     edge_count = 0
-    with open(f'santa2022-{number_of_links}-edge_list-diagonal.tsp', 'w') as file:
+    with open(f'santa2022-{number_of_links}-edge_list-triagonal.tsp', 'w') as file:
         file.write(f'NAME : santa2022-{number_of_links}\n')
         file.write('TYPE : TSP\n')
         file.write('COMMENT : TEST\n')
@@ -229,6 +230,74 @@ def generate_lkh_file(number_of_links=8):
             ignore_bottom = False
             ignore_bot_left = False
             ignore_bot_right = False
+
+            ignore_left_xagonal = True
+            ignore_right_xagonal = True
+
+            ignore_left_yagonal = True
+            ignore_right_yagonal = True
+
+            if 1 < cart_y <= cartesian_limit:
+                if cart_x <= 0:
+                    if cart_x == -cartesian_limit:
+                        ignore_right_xagonal = False
+                    if cart_x == -(cartesian_limit - 2):
+                        ignore_left_yagonal = False
+                    if cart_x == -2:
+                        ignore_right_xagonal = False
+                    if cart_x == 0:
+                        ignore_left_xagonal = False
+
+            if -1 >= cart_y > -cartesian_limit:
+                if cart_x >= 0:
+                    if cart_x == 0:
+                        ignore_right_xagonal = False
+                    if cart_x == 2:
+                        ignore_left_xagonal = False
+                    if cart_x == cartesian_limit - 2:
+                        ignore_right_xagonal = False
+                    if cart_x == cartesian_limit:
+                        ignore_left_xagonal = False
+
+            if 1 <= cart_x <= cartesian_limit:
+                if cart_y >= 0:
+                    if cart_x == 1:
+                        if cart_y == cartesian_limit:
+                            ignore_right_yagonal = False
+                        if cart_y == 2:
+                            ignore_right_yagonal = False
+                    elif cart_x == cartesian_limit:
+                        if cart_y == cartesian_limit:
+                            ignore_left_yagonal = False
+                        if cart_y == 2:
+                            ignore_left_yagonal = False
+                    else:
+                        if cart_y == cartesian_limit:
+                            ignore_left_yagonal = False
+                            ignore_right_yagonal = False
+                        if cart_y == 2:
+                            ignore_left_yagonal = False
+                            ignore_right_yagonal = False
+
+            if -1 >= cart_x >= -cartesian_limit:
+                if cart_y <= 0:
+                    if cart_x == -cartesian_limit:
+                        if cart_y == 0:
+                            ignore_right_yagonal = False
+                        if cart_y == -(cartesian_limit - 2):
+                            ignore_right_yagonal = False
+                    elif cart_x == -1:
+                        if cart_y == 0:
+                            ignore_left_yagonal = False
+                        if cart_y == -(cartesian_limit - 2):
+                            ignore_left_yagonal = False
+                    else:
+                        if cart_y == 0:
+                            ignore_left_yagonal = False
+                            ignore_right_yagonal = False
+                        if cart_y == -(cartesian_limit - 2):
+                            ignore_left_yagonal = False
+                            ignore_right_yagonal = False
 
             if cart_x == 0 and cart_y == 0:
                 continue
@@ -294,17 +363,36 @@ def generate_lkh_file(number_of_links=8):
             if hashed_pos <= hashed_origin:
                 hashed_pos += 1
 
-            if ignore_right and ignore_bottom and ignore_bot_left and ignore_bot_right:
+            if (ignore_right
+                and ignore_bottom
+                and ignore_bot_left
+                and ignore_bot_right
+                and ignore_left_xagonal
+                and ignore_right_xagonal
+                and ignore_left_yagonal
+                and ignore_right_yagonal):
                 pass
 
             edges = [ignore_right,
                      ignore_bottom,
                      ignore_bot_left,
-                     ignore_bot_right]
+                     ignore_bot_right,
+
+                     ignore_left_xagonal,
+                     ignore_right_xagonal,
+                     ignore_left_yagonal,
+                     ignore_right_yagonal]
+
             nodes = [(x, y + 1),
                      (x + 1, y),
                      (x + 1, y - 1),
-                     (x + 1, y + 1)]
+                     (x + 1, y + 1),
+
+                     (x + 1, y - 2),
+                     (x + 1, y + 2),
+                     (x + 2, y - 1),
+                     (x + 2, y + 1),
+                     ]
 
             for j, edge in enumerate(edges):
                 if not edge:
@@ -316,34 +404,6 @@ def generate_lkh_file(number_of_links=8):
                     cost = tsp_cost((x, y), node, image) * 1000
                     file.write(f'{hashed_pos} {hashed_node} {int(cost)}\n')
 
-            # if ignore_bottom:
-            #     right = x, y + 1
-            #     hashed_right = xy_to_hash(*right, no_rows)
-            #     if hashed_right <= hashed_origin:
-            #         hashed_right += 1
-            #     cost_right = tsp_cost((x, y), right, image) * 1000000
-            #     file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
-            # elif ignore_right:
-            #     bot = x + 1, y
-            #     hashed_bot = xy_to_hash(*bot, no_rows)
-            #     if hashed_bot <= hashed_origin:
-            #         hashed_bot += 1
-            #     cost_bot = tsp_cost((x, y), bot, image) * 1000000
-            #     file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
-            # else:
-            #     right = x, y + 1
-            #     hashed_right = xy_to_hash(*right, no_rows)
-            #     if hashed_right <= hashed_origin:
-            #         hashed_right += 1
-            #     cost_right = tsp_cost((x, y), right, image) * 1000000
-            #     file.write(f'{hashed_pos} {hashed_right} {int(cost_right)}\n')
-            #
-            #     bot = x + 1, y
-            #     hashed_bot = xy_to_hash(*bot, no_rows)
-            #     if hashed_bot <= hashed_origin:
-            #         hashed_bot += 1
-            #     cost_bot = tsp_cost((x, y), bot, image) * 1000000
-            #     file.write(f'{hashed_pos} {hashed_bot} {int(cost_bot)}\n')
         print(edge_count)
         file.write('EOF')
 
@@ -695,7 +755,7 @@ def integrated_solution():
 
 
 def main():
-    integrated_solution()
+    generate_lkh_file(number_of_links=8)
 
 
 if __name__ == '__main__':
