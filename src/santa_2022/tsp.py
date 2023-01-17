@@ -6,6 +6,7 @@ from santa_2022.post_processing import *
 from tqdm import tqdm
 from math import isqrt
 from math import log2
+from pprint import pprint
 
 
 def generate_point_map(n):
@@ -52,7 +53,7 @@ def generate_point_map(n):
     return points
 
 
-def point_map_to_path(n, point_map=None):
+def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
     # setup if testing behavior on smaller version of image
     if n < 8:
@@ -65,10 +66,13 @@ def point_map_to_path(n, point_map=None):
     if point_map is None:
         point_map = generate_point_map(no_points)
 
-    path = [origin]
-    # initial_position = bot_right_point_to_config(*point_map[0], n=n)
-    # start_move = get_path_to_configuration(origin, initial_position)[1:-1]
-    # path.extend(start_move)
+    if start_path is None:
+        path = [origin]
+    else:
+        path = start_path
+
+    not_in_one_two_rot_counter = 0
+
     for x, y in tqdm(point_map):
         config = path[-1]
         if x == 0 and y == 0:
@@ -88,15 +92,16 @@ def point_map_to_path(n, point_map=None):
             # assert candidate in get_n_link_rotations(config, 1), f'{config=}, {candidate=}, {get_position(candidate)=}'
             if candidate not in get_n_link_rotations(config, 1) + get_n_link_rotations(
                     config, 2):
-                raise ValueError('weird path')
-                # extension = get_path_to_configuration(config, candidate)[1:]
-                # path.extend(extension)
-            # else:
+                if candidate not in get_n_link_rotations(config, 3):
+                    raise ValueError('weird path')
+                else:
+                    not_in_one_two_rot_counter += 1
+                    print(f'{not_in_one_two_rot_counter=}')
         path.append(candidate)
 
-    # ending_position = path[-1]
-    # ending_move = get_path_to_configuration(ending_position, origin)[1:]
-    # path.extend(ending_move)
+    assert end_path[0] in get_n_link_rotations(path[-1], 1), f'{end_path[0]=}, {path[-1]=}'
+    assert end_path[0] == bot_right_point_to_config(*get_position(end_path[0]))
+    path.extend(end_path)
     return path
 
 
@@ -369,7 +374,7 @@ def generate_lkh_initial_tour(number_of_links=8):
     return ordered_points
 
 
-def lkh_solution_to_path(file_name):
+def lkh_solution_to_point_map(file_name):
     hashed_solution = []
     tour_section = False
     tour_length = None
@@ -416,9 +421,7 @@ def lkh_solution_to_path(file_name):
     assert sorted(ordered_cartesian) == sorted(
         check_cartesian), f'{len(check_cartesian)=}, {len(ordered_cartesian)=}'
 
-    path = point_map_to_path(number_of_links, ordered_cartesian)
-
-    return path, number_of_links
+    return number_of_links, ordered_cartesian
 
 
 def single_search():
@@ -443,7 +446,8 @@ def lkh_search():
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
 
     lkh_output = 'santa2022-8-output-diag.txt'
-    path, number_of_links = lkh_solution_to_path(lkh_output)
+    number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
+    path = point_map_to_path(number_of_links, point_map)
 
     if number_of_links < 8:
         origin = origin[-number_of_links:]
@@ -451,6 +455,7 @@ def lkh_search():
         assert get_position(origin) == (0, 0)
         image = sliced_image(origin, image)
 
+    print([get_position(c) for c in path[:5]])
     print(total_cost(path, image))
 
     # path = run_remove(path)
@@ -465,8 +470,232 @@ def lkh_search():
                          image=image)
 
 
+def start_integration():
+    lkh_output = 'santa2022-8-output-diag.txt'
+    number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
+
+    origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
+    arm_lengts = [64, 32, 16, 8, 4, 2, 1, 1]
+
+    path = [origin]
+
+    print(point_map[:5])
+
+    for i in range(500):
+        config = path[-1]
+        x, y = get_position(config)
+        next_x, next_y = point_map[i]
+        dx = next_x - x
+        dy = next_y - y
+        new_config = config.copy()
+        moved_arms = []
+        if dy == 0:
+            pass
+        elif dy == 1:
+            long_arm_x, long_arm_y = config[0]
+            new_config[0] = long_arm_x, long_arm_y + 1
+            moved_arms.append(0)
+        elif dy == -1:
+            for idx, ((arm_x, arm_y), L) in reversed(
+                    list(enumerate(zip(config, arm_lengts)))):
+                if arm_x == -L and 0 >= arm_y > -L:
+                    new_config[idx] = arm_x, arm_y - 1
+                    moved_arms.append(idx)
+                    break
+            else:
+                raise ValueError('could not find arm to rotate')
+        else:
+            raise ValueError('unreachable')
+
+        if dx == 0:
+            pass
+        elif dx == 1:
+            for idx, ((arm_x, arm_y), L) in reversed(
+                    list(enumerate(zip(config, arm_lengts)))):
+                if 0 > arm_x >= -L and arm_y == -L:
+                    new_config[idx] = arm_x + 1, arm_y
+                    moved_arms.append(idx)
+                    break
+            else:
+                raise ValueError('could not find arm to rotate')
+        elif dx == -1:
+            for idx, ((arm_x, arm_y), L) in list(enumerate(zip(config, arm_lengts))):
+                if 0 >= arm_x > -L and arm_y == -L:
+                    new_config[idx] = arm_x - 1, arm_y
+                    moved_arms.append(idx)
+                    break
+            else:
+                raise ValueError('could not find arm to rotate')
+        else:
+            raise ValueError('unreachable')
+
+        assert len(moved_arms) == len(set(moved_arms))
+
+        standard_config = bot_right_point_to_config(next_x, next_y)
+        if new_config == standard_config:
+            print('next config is standard', i)
+            path.append(new_config)
+            break
+
+        path.append(new_config)
+
+    return path
+
+
+def end_integration():
+    lkh_output = 'santa2022-8-output-diag.txt'
+    number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
+    point_map = list(reversed(point_map))[1:]
+    assert point_map[0] == (2, -1)
+
+    origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
+    arm_lengts = [64, 32, 16, 8, 4, 2, 1, 1]
+
+    first_c = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 1)]
+    second_c = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (0, 1)]
+    third_c = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, -1), (-1, 0), (0, 1)]
+    fourth_c = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, -2), (-1, 0),
+                (0, 1)]
+
+    assert get_position(first_c) == (0, 1)
+    assert get_position(second_c) == (1, 1)
+    assert get_position(third_c) == (1, 0)
+    assert get_position(fourth_c) == (1, -1)
+    path = [origin, first_c, second_c, third_c, fourth_c]
+
+    print(point_map[:5])
+
+    for i in range(600):
+        config = path[-1]
+        x, y = get_position(config)
+        next_x, next_y = point_map[i]
+        dx = next_x - x
+        dy = next_y - y
+        new_config = config.copy()
+        moved_arms = []
+        if dy == 0:
+            pass
+        elif dy == 1:
+            long_arm_x, long_arm_y = config[0]
+            new_config[0] = long_arm_x, long_arm_y + 1
+            moved_arms.append(0)
+        elif dy == -1:
+            last_arm_x, last_arm_y = config[7]
+            if last_arm_x == -1 and last_arm_y == 1:
+                new_config[7] = last_arm_x, last_arm_y - 1
+                moved_arms.append(7)
+            else:
+                for idx, ((arm_x, arm_y), L) in reversed(
+                        list(enumerate(zip(config, arm_lengts)))):
+                    if arm_x == -L and 0 >= arm_y > -L:
+                        new_config[idx] = arm_x, arm_y - 1
+                        moved_arms.append(idx)
+                        break
+                else:
+                    long_arm_x, long_arm_y = config[0]
+                    new_config[0] = long_arm_x, long_arm_y - 1
+                    moved_arms.append(0)
+        else:
+            raise ValueError('unreachable')
+
+        if dx == 0:
+            pass
+        elif dx == 1:
+            for idx, ((arm_x, arm_y), L) in reversed(
+                    list(enumerate(zip(config, arm_lengts)))):
+                if 0 > arm_x >= -L and arm_y == -L:
+                    new_config[idx] = arm_x + 1, arm_y
+                    moved_arms.append(idx)
+                    break
+            else:
+                for idx, ((arm_x, arm_y), L) in reversed(
+                        list(enumerate(zip(config, arm_lengts)))):
+                    if 0 <= arm_x < L and arm_y == -L:
+                        new_config[idx] = arm_x + 1, arm_y
+                        moved_arms.append(idx)
+                        break
+                else:
+                    raise ValueError('could not find arm to rotate')
+        elif dx == -1:
+            last_arm_x, last_arm_y = config[7]
+            if last_arm_x == 0 and last_arm_y == 1:
+                new_config[7] = last_arm_x - 1, last_arm_y
+                moved_arms.append(7)
+            else:
+                for idx, ((arm_x, arm_y), L) in reversed(
+                        list(enumerate(zip(config, arm_lengts)))):
+                    if L >= arm_x > 0 and arm_y == -L:
+                        new_config[idx] = arm_x - 1, arm_y
+                        moved_arms.append(idx)
+                        break
+                else:
+                    for idx, ((arm_x, arm_y), L) in list(
+                            enumerate(zip(config, arm_lengts))):
+                        if 0 >= arm_x > -L and arm_y == -L:
+                            new_config[idx] = arm_x - 1, arm_y
+                            moved_arms.append(idx)
+                            break
+                    else:
+                        raise ValueError('could not find arm to rotate')
+        else:
+            raise ValueError('unreachable')
+
+        assert len(moved_arms) == len(set(moved_arms))
+
+        standard_config = bot_right_point_to_config(next_x, next_y)
+        if new_config == standard_config:
+            print('next config is standard', i)
+            path.append(new_config)
+            break
+
+        path.append(new_config)
+
+    return path
+
+
+def integrated_solution():
+    start_path = start_integration()
+    end_path = list(reversed(end_integration()))
+
+    lkh_output = 'santa2022-8-output-diag.txt'
+    number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
+
+    assert len(point_map) == 257 ** 2 - 1
+    assert len(point_map) == len(set(point_map))
+
+    start_path_positions_without_origin = [get_position(c) for c in start_path[1:]]
+    end_path_positions_without_origin = [get_position(c) for c in end_path[:-1]]
+    print(len(start_path_positions_without_origin))
+    print(len(end_path_positions_without_origin))
+    print(set(point_map[263:]) & set(start_path_positions_without_origin))
+    print(set(point_map[:-220]) & set(end_path_positions_without_origin))
+
+    point_map.remove((0, 1))
+    point_map.remove((1, 1))
+    point_map.remove((1, 0))
+
+    path = point_map_to_path(number_of_links, point_map=point_map[263:-220],
+                             start_path=start_path, end_path=end_path)
+
+    assert len(path) == 66050
+    assert path[0] == path[-1]
+
+    path = run_remove(path)
+
+    df_image = pd.read_csv("../../data/image.csv")
+    image = df_to_image(df_image)
+    origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
+
+    file_name = 'lkh_with_start_and_end_integration-new'
+    save_submission(path, file_name)
+    df = path_to_arrows(path)
+    plot_path_over_image(origin, df,
+                         save_path=f'../../output/images/{file_name}.png',
+                         image=image)
+
+
 def main():
-    lkh_search()
+    integrated_solution()
 
 
 if __name__ == '__main__':
