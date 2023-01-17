@@ -71,6 +71,9 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
     else:
         path = start_path
 
+    if end_path is None:
+        end_path = [bot_right_point_to_config(1, -1)]
+
     not_in_one_two_rot_counter = 0
 
     for x, y in tqdm(point_map):
@@ -99,6 +102,8 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
                     print(f'{not_in_one_two_rot_counter=}')
         path.append(candidate)
 
+    if end_path[0] == path[-1]:
+        return path
     assert end_path[0] in get_n_link_rotations(path[-1],
                                                1), f'{end_path[0]=}, {path[-1]=}'
     assert end_path[0] == bot_right_point_to_config(*get_position(end_path[0]))
@@ -505,7 +510,7 @@ def lkh_search():
     image = df_to_image(df_image)
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
 
-    lkh_output = 'santa2022-8-output-diag.txt'
+    lkh_output = 'santa2022-8-output-triag.txt'
     number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
     path = point_map_to_path(number_of_links, point_map)
 
@@ -522,7 +527,7 @@ def lkh_search():
     # path = run_remove(path)
     # print(total_cost(path, image))
 
-    file_name = lkh_output[:-4] + '-no_start_or_finish-latest'
+    file_name = lkh_output[:-4] + '-no_start_or_finish-latest-triag'
     save_submission(path, file_name)
     df = path_to_arrows(path)
     plot_path_over_image(origin, df,
@@ -538,8 +543,6 @@ def start_integration():
     arm_lengts = [64, 32, 16, 8, 4, 2, 1, 1]
 
     path = [origin]
-
-    print(point_map[:5])
 
     for i in range(500):
         config = path[-1]
@@ -563,7 +566,9 @@ def start_integration():
                     moved_arms.append(idx)
                     break
             else:
-                raise ValueError('could not find arm to rotate')
+                long_arm_x, long_arm_y = config[0]
+                new_config[0] = long_arm_x, long_arm_y - 1
+                moved_arms.append(0)
         else:
             raise ValueError('unreachable')
 
@@ -586,6 +591,27 @@ def start_integration():
                     break
             else:
                 raise ValueError('could not find arm to rotate')
+        elif dx == 2:
+            for idx, ((arm_x, arm_y), L) in reversed(
+                    list(enumerate(zip(config, arm_lengts)))):
+                if 0 > arm_x >= -L and arm_y == -L:
+                    new_config[idx] = arm_x + 1, arm_y
+                    moved_arms.append(idx)
+                    if len(moved_arms) == 3:
+                        break
+            else:
+                raise ValueError('could not find two arms to rotate')
+
+        elif dx == -2:
+            for idx, ((arm_x, arm_y), L) in list(enumerate(zip(config, arm_lengts))):
+                if 0 > arm_x >= -L and arm_y == -L:
+                    new_config[idx] = arm_x + 1, arm_y
+                    moved_arms.append(idx)
+                    if len(moved_arms) == 3:
+                        break
+            else:
+                raise ValueError('could not find two arms to rotate')
+
         else:
             raise ValueError('unreachable')
 
@@ -697,6 +723,52 @@ def end_integration():
                             break
                     else:
                         raise ValueError('could not find arm to rotate')
+        elif dx == 2:
+            last_arm_x, last_arm_y = config[7]
+            if last_arm_x == 0 and last_arm_y == 1:
+                new_config[7] = last_arm_x - 1, last_arm_y
+                moved_arms.append(7)
+            else:
+                for idx, ((arm_x, arm_y), L) in reversed(
+                        list(enumerate(zip(config, arm_lengts)))):
+                    if L >= arm_x > 0 and arm_y == -L:
+                        new_config[idx] = arm_x - 1, arm_y
+                        moved_arms.append(idx)
+                        if len(moved_arms) == 3:
+                            break
+                else:
+                    for idx, ((arm_x, arm_y), L) in list(
+                            enumerate(zip(config, arm_lengts))):
+                        if 0 >= arm_x > -L and arm_y == -L:
+                            new_config[idx] = arm_x - 1, arm_y
+                            moved_arms.append(idx)
+                            if len(moved_arms) == 3:
+                                break
+                    else:
+                        raise ValueError('could not find two arms to rotate')
+        elif dx == -2:
+            last_arm_x, last_arm_y = config[7]
+            if last_arm_x == 0 and last_arm_y == 1:
+                new_config[7] = last_arm_x - 1, last_arm_y
+                moved_arms.append(7)
+            else:
+                for idx, ((arm_x, arm_y), L) in reversed(
+                        list(enumerate(zip(config, arm_lengts)))):
+                    if L >= arm_x > 0 and arm_y == -L:
+                        new_config[idx] = arm_x - 1, arm_y
+                        moved_arms.append(idx)
+                        if len(moved_arms) == 3:
+                            break
+                else:
+                    for idx, ((arm_x, arm_y), L) in list(
+                            enumerate(zip(config, arm_lengts))):
+                        if 0 >= arm_x > -L and arm_y == -L:
+                            new_config[idx] = arm_x - 1, arm_y
+                            moved_arms.append(idx)
+                            if len(moved_arms) == 3:
+                                break
+                    else:
+                        raise ValueError('could not find two arms to rotate')
         else:
             raise ValueError('unreachable')
 
@@ -717,7 +789,7 @@ def integrated_solution():
     start_path = start_integration()
     end_path = list(reversed(end_integration()))
 
-    lkh_output = 'santa2022-8-output-diag.txt'
+    lkh_output = 'santa2022-8-output-triag.txt'
     number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
 
     assert len(point_map) == 257 ** 2 - 1
@@ -746,7 +818,7 @@ def integrated_solution():
     image = df_to_image(df_image)
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
 
-    file_name = 'lkh_with_start_and_end_integration-new'
+    file_name = 'lkh_with_start_and_end_integration-diag'
     save_submission(path, file_name)
     df = path_to_arrows(path)
     plot_path_over_image(origin, df,
@@ -755,7 +827,7 @@ def integrated_solution():
 
 
 def main():
-    generate_lkh_file(number_of_links=8)
+    integrated_solution()
 
 
 if __name__ == '__main__':
