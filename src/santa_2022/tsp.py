@@ -66,9 +66,9 @@ def point_map_to_path(n, point_map=None):
         point_map = generate_point_map(no_points)
 
     path = [origin]
-    initial_position = bot_right_point_to_config(*point_map[0], n=n)
-    start_move = get_path_to_configuration(origin, initial_position)[1:-1]
-    path.extend(start_move)
+    # initial_position = bot_right_point_to_config(*point_map[0], n=n)
+    # start_move = get_path_to_configuration(origin, initial_position)[1:-1]
+    # path.extend(start_move)
     for x, y in tqdm(point_map):
         config = path[-1]
         if x == 0 and y == 0:
@@ -91,12 +91,12 @@ def point_map_to_path(n, point_map=None):
                 raise ValueError('weird path')
                 # extension = get_path_to_configuration(config, candidate)[1:]
                 # path.extend(extension)
-            else:
-                path.append(candidate)
+            # else:
+        path.append(candidate)
 
-    ending_position = path[-1]
-    ending_move = get_path_to_configuration(ending_position, origin)[1:]
-    path.extend(ending_move)
+    # ending_position = path[-1]
+    # ending_move = get_path_to_configuration(ending_position, origin)[1:]
+    # path.extend(ending_move)
     return path
 
 
@@ -408,7 +408,7 @@ def lkh_solution_to_path(file_name):
     cartesian_solution = [array_to_cartesian(*hash_to_xy(hp, no_rows), image_shape) for
                           hp in hashed_solution]
 
-    start_index = cartesian_solution.index((0, -64))
+    start_index = cartesian_solution.index((0, -1))
     ordered_cartesian = cartesian_solution[start_index:] + cartesian_solution[
                                                            :start_index]
 
@@ -453,12 +453,11 @@ def lkh_search():
 
     print(total_cost(path, image))
 
-    path = run_remove(path)
-    path = run_remove(path)
+    # path = run_remove(path)
+    # path = run_remove(path)
+    # print(total_cost(path, image))
 
-    print(total_cost(path, image))
-
-    file_name = lkh_output[:-4] + '-dedup-new_start'
+    file_name = lkh_output[:-4] + '-no_start_or_finish-latest'
     save_submission(path, file_name)
     df = path_to_arrows(path)
     plot_path_over_image(origin, df,
