@@ -29,7 +29,6 @@ def test_generate_point_map():
         (2, -2),
         (1, -2),
         (1, -1),
-        (0, -1),
     ]
     result = generate_point_map(2)
     assert expected == result
@@ -37,7 +36,6 @@ def test_generate_point_map():
 
 def test_points_from_configs():
     expected = [
-        [(1, 0), (-1, 0)],
         [(1, 0), (-1, -1)],
         [(1, -1), (-1, -1)],
         [(0, -1), (-1, -1)],
@@ -62,8 +60,6 @@ def test_points_from_configs():
         [(1, -1), (1, -1)],
         [(1, -1), (0, -1)],
         [(1, 0), (0, -1)],
-        [(1, 0), (-1, -1)],
-        [(1, 0), (-1, 0)],
     ]
     points = generate_point_map(2)
     assert points == [get_position(c) for c in expected]
@@ -96,8 +92,6 @@ def test_point_map_to_path():
         [(1, -1), (1, -1)],
         [(1, -1), (0, -1)],
         [(1, 0), (0, -1)],
-        [(1, 0), (-1, -1)],
-        [(1, 0), (-1, 0)],
     ]
     result = point_map_to_path(2)
     assert result == expected
@@ -262,6 +256,7 @@ def test_hashed_points():
                 16,
                 12,
                 11,
-                6]
+                6,
+                ]
     result = generate_lkh_initial_tour(number_of_links=2)
     assert result == expected

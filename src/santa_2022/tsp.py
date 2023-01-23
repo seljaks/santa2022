@@ -72,7 +72,7 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
         path = start_path
 
     if end_path is None:
-        end_path = [bot_right_point_to_config(1, -1)]
+        end_path = [bot_right_point_to_config(1, -1, n=n)]
 
     not_in_one_two_rot_counter = 0
 
@@ -92,7 +92,6 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
             candidate = None
             raise ValueError('unreachable')
         if config != origin:
-            # assert candidate in get_n_link_rotations(config, 1), f'{config=}, {candidate=}, {get_position(candidate)=}'
             if candidate not in get_n_link_rotations(config, 1) + get_n_link_rotations(
                     config, 2):
                 if candidate not in get_n_link_rotations(config, 3):
@@ -426,7 +425,7 @@ def generate_lkh_initial_tour(number_of_links=8):
     no_rows = origin[0][0] * 4 + 1
     shape = no_rows, no_rows
 
-    points = generate_point_map(no_points)[:-1]
+    points = generate_point_map(no_points)
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, shape), no_rows)
     hashed_points = (
         xy_to_hash(*cartesian_to_array(*point, shape), no_rows) for point
