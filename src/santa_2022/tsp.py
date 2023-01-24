@@ -4,8 +4,6 @@ from tqdm import tqdm
 from math import isqrt
 from math import log2
 
-import os
-
 
 def generate_point_map(n):
     """Makes a list of points from without (0, 0), starts at (0, -1) and ends there"""
