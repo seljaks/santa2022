@@ -187,6 +187,8 @@ def merge_path_and_information(path, info):
 
 def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=True,
            save=False, number_of_links=8):
+    """Runs single greedy search that always visits an unvisited node, then returns to
+    origin once all nodes are visited at least once."""
     assert 2 <= number_of_links <= 8
     if number_of_links < 8:
         save = False
@@ -273,6 +275,8 @@ def search(corner, max_links, nearby_direction, nearby_threshold, tag, dedup=Tru
 def two_sided_search(corner, max_links, nearby_direction, nearby_threshold, tag,
                      dedup=True,
                      save=False, number_of_links=8):
+    """Runs two greedy searches that do not overlap, second search is reversed and
+    connected to end of first search."""
     assert 2 <= number_of_links <= 8
     if number_of_links < 8:
         save = False
@@ -491,7 +495,7 @@ def grid_search():
         for
         corner, max_links, nd, nt in
         product(corner, links, directions, thresholds)
-        ]
+    ]
 
     with Pool() as pool:
         results = pool.starmap(two_sided_search, grid)
