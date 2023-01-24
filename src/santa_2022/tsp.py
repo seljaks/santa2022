@@ -95,7 +95,6 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
                     raise ValueError('weird path')
                 else:
                     not_in_one_two_rot_counter += 1
-                    print(f'{not_in_one_two_rot_counter=}')
         path.append(candidate)
 
     if end_path[0] == path[-1]:
@@ -104,6 +103,9 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
                                                1), f'{end_path[0]=}, {path[-1]=}'
     assert end_path[0] == bot_right_point_to_config(*get_position(end_path[0]))
     path.extend(end_path)
+
+    print(f'Number of triagonals taken = {not_in_one_two_rot_counter}')
+
     return path
 
 
@@ -216,7 +218,7 @@ def generate_lkh_tsp_file(number_of_links=8, precision=3):
     no_nodes = no_rows ** 2 - 1
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image.shape), no_rows)
     edge_count = 0
-    with open(f'santa2022-{number_of_links}-graph.tsp', 'w') as file:
+    with open(f'../../tsp/santa2022-{number_of_links}-graph.tsp', 'w') as file:
         file.write(f'NAME : santa2022-{number_of_links}\n')
         file.write('TYPE : TSP\n')
         file.write('COMMENT : TEST\n')
@@ -409,7 +411,7 @@ def generate_lkh_tsp_file(number_of_links=8, precision=3):
 
 
 def generate_lkh_par_file(number_of_links=8):
-    with open(f'santa2022-{number_of_links}.par', 'w') as file:
+    with open(f'../../tsp/santa2022-{number_of_links}.par', 'w') as file:
         file.write('PROBLEM_FILE = santa2022-{number_of_links}-graph.tsp\n')
         file.write(f'INITIAL_TOUR_FILE = santa2022-{number_of_links}-output.tsp\n')
         file.write('MOVE_TYPE = 5\n')
@@ -615,7 +617,7 @@ def start_integration(lkh_output='santa2022-8-output.txt'):
 
         standard_config = bot_right_point_to_config(next_x, next_y)
         if new_config == standard_config:
-            print('next config is standard', i)
+            print('found standard config')
             path.append(new_config)
             break
 
@@ -769,7 +771,7 @@ def end_integration(lkh_output='santa2022-8-output.txt'):
 
         standard_config = bot_right_point_to_config(next_x, next_y)
         if new_config == standard_config:
-            print('found standard config', i)
+            print('found standard config')
             path.append(new_config)
             break
 
@@ -779,7 +781,7 @@ def end_integration(lkh_output='santa2022-8-output.txt'):
 
 
 def final_integrated_solution():
-    lkh_output = 'santa2022-8-output.txt'
+    lkh_output = '../../tsp/santa2022-8-output.txt'
 
     start_path = start_integration(lkh_output=lkh_output)
     end_path = list(reversed(end_integration(lkh_output=lkh_output)))
@@ -794,8 +796,8 @@ def final_integrated_solution():
     point_map.remove((1, 1))
     point_map.remove((1, 0))
 
-    standard_path_begin = len(start_path) - 1  # remove origin
-    standard_path_end = len(end_path) - 4  # remove origin and three custom configs
+    standard_path_begin = len(start_path) - 1  # without origin
+    standard_path_end = len(end_path) - 4  # without origin and three custom configs
     point_map = point_map[standard_path_begin:-standard_path_end]
 
     start_path_positions_without_origin = [get_position(c) for c in start_path[1:]]
