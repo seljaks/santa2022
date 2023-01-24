@@ -1,13 +1,10 @@
-import pandas as pd
-
-from santa_2022.common import *
 from santa_2022.post_processing import *
 
 from tqdm import tqdm
 from math import isqrt
 from math import log2
-from pprint import pprint
 
+import os
 
 def generate_point_map(n):
     """Makes a list of points from without (0, 0), starts at (0, -1) and ends there"""
@@ -91,7 +88,7 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
         else:
             candidate = None
             raise ValueError('unreachable')
-        if config != origin:
+        if config != origin:  # sanity check
             if candidate not in get_n_link_rotations(config, 1) + get_n_link_rotations(
                     config, 2):
                 if candidate not in get_n_link_rotations(config, 3):
@@ -201,7 +198,7 @@ def tsp_cost(from_position, to_position, image, color_scale=3.0):
     return color_part + reconf_part
 
 
-def generate_lkh_file(number_of_links=8):
+def generate_lkh_tsp_file(number_of_links=8):
     assert 2 <= number_of_links <= 8
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
     image = df_to_image(pd.read_csv("../../data/image.csv"))
@@ -219,7 +216,7 @@ def generate_lkh_file(number_of_links=8):
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image.shape), no_rows)
     print(hashed_origin)
     edge_count = 0
-    with open(f'santa2022-{number_of_links}-edge_list-triagonal.tsp', 'w') as file:
+    with open(f'santa2022-{number_of_links}-graph.tsp', 'w') as file:
         file.write(f'NAME : santa2022-{number_of_links}\n')
         file.write('TYPE : TSP\n')
         file.write('COMMENT : TEST\n')
@@ -412,6 +409,15 @@ def generate_lkh_file(number_of_links=8):
         file.write('EOF')
 
 
+def generate_lkh_par_file(number_of_links=8):
+    with open(f'santa2022-{number_of_links}.par', 'w') as file:
+        file.write('PROBLEM_FILE = santa2022-{number_of_links}-graph.tsp\n')
+        file.write(f'INITIAL_TOUR_FILE = santa2022-{number_of_links}-output.tsp\n')
+        file.write('MOVE_TYPE = 5\n')
+        file.write(f'OUTPUT_TOUR_FILE = santa2022-{number_of_links}-output.tsp\n')
+        file.write('RUNS = 1\n')
+
+
 def generate_lkh_initial_tour(number_of_links=8):
     assert 2 <= number_of_links <= 8
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
@@ -522,10 +528,6 @@ def lkh_search():
     print([get_position(c) for c in path[:5]])
     print(total_cost(path, image))
 
-    # path = run_remove(path)
-    # path = run_remove(path)
-    # print(total_cost(path, image))
-
     file_name = lkh_output[:-4] + '-no_start_or_finish-latest-triag'
     save_submission(path, file_name)
     df = path_to_arrows(path)
@@ -539,7 +541,7 @@ def start_integration():
     number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
 
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
-    arm_lengts = [64, 32, 16, 8, 4, 2, 1, 1]
+    arm_lengths = [64, 32, 16, 8, 4, 2, 1, 1]
 
     path = [origin]
 
@@ -559,7 +561,7 @@ def start_integration():
             moved_arms.append(0)
         elif dy == -1:
             for idx, ((arm_x, arm_y), L) in reversed(
-                    list(enumerate(zip(config, arm_lengts)))):
+                    list(enumerate(zip(config, arm_lengths)))):
                 if arm_x == -L and 0 >= arm_y > -L:
                     new_config[idx] = arm_x, arm_y - 1
                     moved_arms.append(idx)
@@ -575,7 +577,7 @@ def start_integration():
             pass
         elif dx == 1:
             for idx, ((arm_x, arm_y), L) in reversed(
-                    list(enumerate(zip(config, arm_lengts)))):
+                    list(enumerate(zip(config, arm_lengths)))):
                 if 0 > arm_x >= -L and arm_y == -L:
                     new_config[idx] = arm_x + 1, arm_y
                     moved_arms.append(idx)
@@ -583,7 +585,7 @@ def start_integration():
             else:
                 raise ValueError('could not find arm to rotate')
         elif dx == -1:
-            for idx, ((arm_x, arm_y), L) in list(enumerate(zip(config, arm_lengts))):
+            for idx, ((arm_x, arm_y), L) in list(enumerate(zip(config, arm_lengths))):
                 if 0 >= arm_x > -L and arm_y == -L:
                     new_config[idx] = arm_x - 1, arm_y
                     moved_arms.append(idx)
@@ -592,7 +594,7 @@ def start_integration():
                 raise ValueError('could not find arm to rotate')
         elif dx == 2:
             for idx, ((arm_x, arm_y), L) in reversed(
-                    list(enumerate(zip(config, arm_lengts)))):
+                    list(enumerate(zip(config, arm_lengths)))):
                 if 0 > arm_x >= -L and arm_y == -L:
                     new_config[idx] = arm_x + 1, arm_y
                     moved_arms.append(idx)
@@ -602,7 +604,7 @@ def start_integration():
                 raise ValueError('could not find two arms to rotate')
 
         elif dx == -2:
-            for idx, ((arm_x, arm_y), L) in list(enumerate(zip(config, arm_lengts))):
+            for idx, ((arm_x, arm_y), L) in list(enumerate(zip(config, arm_lengths))):
                 if 0 > arm_x >= -L and arm_y == -L:
                     new_config[idx] = arm_x + 1, arm_y
                     moved_arms.append(idx)
@@ -634,7 +636,7 @@ def end_integration():
     assert point_map[0] == (2, -1)
 
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
-    arm_lengts = [64, 32, 16, 8, 4, 2, 1, 1]
+    arm_lengths = [64, 32, 16, 8, 4, 2, 1, 1]
 
     first_c = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 1)]
     second_c = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (0, 1)]
@@ -671,7 +673,7 @@ def end_integration():
                 moved_arms.append(7)
             else:
                 for idx, ((arm_x, arm_y), L) in reversed(
-                        list(enumerate(zip(config, arm_lengts)))):
+                        list(enumerate(zip(config, arm_lengths)))):
                     if arm_x == -L and 0 >= arm_y > -L:
                         new_config[idx] = arm_x, arm_y - 1
                         moved_arms.append(idx)
@@ -687,14 +689,14 @@ def end_integration():
             pass
         elif dx == 1:
             for idx, ((arm_x, arm_y), L) in reversed(
-                    list(enumerate(zip(config, arm_lengts)))):
+                    list(enumerate(zip(config, arm_lengths)))):
                 if 0 > arm_x >= -L and arm_y == -L:
                     new_config[idx] = arm_x + 1, arm_y
                     moved_arms.append(idx)
                     break
             else:
                 for idx, ((arm_x, arm_y), L) in reversed(
-                        list(enumerate(zip(config, arm_lengts)))):
+                        list(enumerate(zip(config, arm_lengths)))):
                     if 0 <= arm_x < L and arm_y == -L:
                         new_config[idx] = arm_x + 1, arm_y
                         moved_arms.append(idx)
@@ -708,14 +710,14 @@ def end_integration():
                 moved_arms.append(7)
             else:
                 for idx, ((arm_x, arm_y), L) in reversed(
-                        list(enumerate(zip(config, arm_lengts)))):
+                        list(enumerate(zip(config, arm_lengths)))):
                     if L >= arm_x > 0 and arm_y == -L:
                         new_config[idx] = arm_x - 1, arm_y
                         moved_arms.append(idx)
                         break
                 else:
                     for idx, ((arm_x, arm_y), L) in list(
-                            enumerate(zip(config, arm_lengts))):
+                            enumerate(zip(config, arm_lengths))):
                         if 0 >= arm_x > -L and arm_y == -L:
                             new_config[idx] = arm_x - 1, arm_y
                             moved_arms.append(idx)
@@ -729,7 +731,7 @@ def end_integration():
                 moved_arms.append(7)
             else:
                 for idx, ((arm_x, arm_y), L) in reversed(
-                        list(enumerate(zip(config, arm_lengts)))):
+                        list(enumerate(zip(config, arm_lengths)))):
                     if L >= arm_x > 0 and arm_y == -L:
                         new_config[idx] = arm_x - 1, arm_y
                         moved_arms.append(idx)
@@ -737,7 +739,7 @@ def end_integration():
                             break
                 else:
                     for idx, ((arm_x, arm_y), L) in list(
-                            enumerate(zip(config, arm_lengts))):
+                            enumerate(zip(config, arm_lengths))):
                         if 0 >= arm_x > -L and arm_y == -L:
                             new_config[idx] = arm_x - 1, arm_y
                             moved_arms.append(idx)
@@ -752,7 +754,7 @@ def end_integration():
                 moved_arms.append(7)
             else:
                 for idx, ((arm_x, arm_y), L) in reversed(
-                        list(enumerate(zip(config, arm_lengts)))):
+                        list(enumerate(zip(config, arm_lengths)))):
                     if L >= arm_x > 0 and arm_y == -L:
                         new_config[idx] = arm_x - 1, arm_y
                         moved_arms.append(idx)
@@ -760,7 +762,7 @@ def end_integration():
                             break
                 else:
                     for idx, ((arm_x, arm_y), L) in list(
-                            enumerate(zip(config, arm_lengts))):
+                            enumerate(zip(config, arm_lengths))):
                         if 0 >= arm_x > -L and arm_y == -L:
                             new_config[idx] = arm_x - 1, arm_y
                             moved_arms.append(idx)
@@ -784,7 +786,7 @@ def end_integration():
     return path
 
 
-def integrated_solution():
+def final_integrated_solution():
     start_path = start_integration()
     end_path = list(reversed(end_integration()))
 
@@ -826,7 +828,7 @@ def integrated_solution():
 
 
 def main():
-    integrated_solution()
+    final_integrated_solution()
 
 
 if __name__ == '__main__':
