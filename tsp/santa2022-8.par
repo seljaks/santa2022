@@ -1,0 +1,5 @@
+PROBLEM_FILE = santa2022-{number_of_links}-graph.tsp
+INITIAL_TOUR_FILE = santa2022-8-output.tsp
+MOVE_TYPE = 5
+OUTPUT_TOUR_FILE = santa2022-8-output.tsp
+RUNS = 1
