@@ -6,6 +6,7 @@ from math import log2
 
 import os
 
+
 def generate_point_map(n):
     """Makes a list of points from without (0, 0), starts at (0, -1) and ends there"""
     points = []
@@ -86,7 +87,6 @@ def point_map_to_path(n, point_map=None, start_path=None, end_path=None):
         elif x >= 0 and y <= -1:
             candidate = bot_right_point_to_config(x, y, n=n)
         else:
-            candidate = None
             raise ValueError('unreachable')
         if config != origin:  # sanity check
             if candidate not in get_n_link_rotations(config, 1) + get_n_link_rotations(
@@ -198,7 +198,9 @@ def tsp_cost(from_position, to_position, image, color_scale=3.0):
     return color_part + reconf_part
 
 
-def generate_lkh_tsp_file(number_of_links=8):
+def generate_lkh_tsp_file(number_of_links=8, precision=3):
+    precision_multiplier = 10**precision
+
     assert 2 <= number_of_links <= 8
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
     image = df_to_image(pd.read_csv("../../data/image.csv"))
@@ -211,10 +213,8 @@ def generate_lkh_tsp_file(number_of_links=8):
     cartesian_limit = origin[0][0] * 2
     no_rows = origin[0][0] * 4 + 1
     assert no_rows == image.shape[0] == image.shape[1]
-    print(no_rows)
     no_nodes = no_rows ** 2 - 1
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image.shape), no_rows)
-    print(hashed_origin)
     edge_count = 0
     with open(f'santa2022-{number_of_links}-graph.tsp', 'w') as file:
         file.write(f'NAME : santa2022-{number_of_links}\n')
@@ -365,13 +365,13 @@ def generate_lkh_tsp_file(number_of_links=8):
                 hashed_pos += 1
 
             if (ignore_right
-                and ignore_bottom
-                and ignore_bot_left
-                and ignore_bot_right
-                and ignore_left_xagonal
-                and ignore_right_xagonal
-                and ignore_left_yagonal
-                and ignore_right_yagonal):
+                    and ignore_bottom
+                    and ignore_bot_left
+                    and ignore_bot_right
+                    and ignore_left_xagonal
+                    and ignore_right_xagonal
+                    and ignore_left_yagonal
+                    and ignore_right_yagonal):
                 pass
 
             edges = [ignore_right,
@@ -402,10 +402,9 @@ def generate_lkh_tsp_file(number_of_links=8):
                     hashed_node = xy_to_hash(*node, no_rows)
                     if hashed_node <= hashed_origin:
                         hashed_node += 1
-                    cost = tsp_cost((x, y), node, image) * 1000
+                    cost = tsp_cost((x, y), node, image) * precision_multiplier
                     file.write(f'{hashed_pos} {hashed_node} {int(cost)}\n')
 
-        print(edge_count)
         file.write('EOF')
 
 
@@ -467,7 +466,6 @@ def lkh_solution_to_point_map(file_name):
     assert image_size == no_rows ** 2
     image_shape = no_rows, no_rows
     hashed_origin = xy_to_hash(*cartesian_to_array(0, 0, image_shape), no_rows)
-    print(hashed_origin)
 
     origin_zz = (isqrt(image_size) - 1) // 4
     check_n = log2(origin_zz)
@@ -510,12 +508,11 @@ def single_search():
                          image=image)
 
 
-def lkh_search():
+def lkh_search(lkh_output='santa2022-8-output.txt'):
     df_image = pd.read_csv("../../data/image.csv")
     image = df_to_image(df_image)
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
 
-    lkh_output = 'santa2022-8-output-triag.txt'
     number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
     path = point_map_to_path(number_of_links, point_map)
 
@@ -525,7 +522,6 @@ def lkh_search():
         assert get_position(origin) == (0, 0)
         image = sliced_image(origin, image)
 
-    print([get_position(c) for c in path[:5]])
     print(total_cost(path, image))
 
     file_name = lkh_output[:-4] + '-no_start_or_finish-latest-triag'
@@ -536,8 +532,7 @@ def lkh_search():
                          image=image)
 
 
-def start_integration():
-    lkh_output = 'santa2022-8-output-diag.txt'
+def start_integration(lkh_output='santa2022-8-output.txt'):
     number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
 
     origin = [(64, 0), (-32, 0), (-16, 0), (-8, 0), (-4, 0), (-2, 0), (-1, 0), (-1, 0)]
@@ -629,8 +624,7 @@ def start_integration():
     return path
 
 
-def end_integration():
-    lkh_output = 'santa2022-8-output-diag.txt'
+def end_integration(lkh_output='santa2022-8-output.txt'):
     number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
     point_map = list(reversed(point_map))[1:]
     assert point_map[0] == (2, -1)
@@ -649,8 +643,6 @@ def end_integration():
     assert get_position(third_c) == (1, 0)
     assert get_position(fourth_c) == (1, -1)
     path = [origin, first_c, second_c, third_c, fourth_c]
-
-    print(point_map[:5])
 
     for i in range(600):
         config = path[-1]
@@ -777,7 +769,7 @@ def end_integration():
 
         standard_config = bot_right_point_to_config(next_x, next_y)
         if new_config == standard_config:
-            print('next config is standard', i)
+            print('found standard config', i)
             path.append(new_config)
             break
 
@@ -787,27 +779,32 @@ def end_integration():
 
 
 def final_integrated_solution():
-    start_path = start_integration()
-    end_path = list(reversed(end_integration()))
+    lkh_output = 'santa2022-8-output.txt'
 
-    lkh_output = 'santa2022-8-output-triag.txt'
+    start_path = start_integration(lkh_output=lkh_output)
+    end_path = list(reversed(end_integration(lkh_output=lkh_output)))
+
     number_of_links, point_map = lkh_solution_to_point_map(lkh_output)
 
     assert len(point_map) == 257 ** 2 - 1
     assert len(point_map) == len(set(point_map))
 
-    start_path_positions_without_origin = [get_position(c) for c in start_path[1:]]
-    end_path_positions_without_origin = [get_position(c) for c in end_path[:-1]]
-    print(len(start_path_positions_without_origin))
-    print(len(end_path_positions_without_origin))
-    print(set(point_map[263:]) & set(start_path_positions_without_origin))
-    print(set(point_map[:-220]) & set(end_path_positions_without_origin))
-
+    # points from custom end_integration path optimization
     point_map.remove((0, 1))
     point_map.remove((1, 1))
     point_map.remove((1, 0))
 
-    path = point_map_to_path(number_of_links, point_map=point_map[263:-220],
+    standard_path_begin = len(start_path) - 1  # remove origin
+    standard_path_end = len(end_path) - 4  # remove origin and three custom configs
+    point_map = point_map[standard_path_begin:-standard_path_end]
+
+    start_path_positions_without_origin = [get_position(c) for c in start_path[1:]]
+    end_path_positions_without_origin = [get_position(c) for c in end_path[:-1]]
+
+    assert set(point_map) & set(start_path_positions_without_origin) == set()
+    assert set(point_map) & set(end_path_positions_without_origin) == set()
+
+    path = point_map_to_path(number_of_links, point_map=point_map,
                              start_path=start_path, end_path=end_path)
 
     assert len(path) == 66050
