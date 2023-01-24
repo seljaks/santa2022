@@ -1,12 +1,9 @@
 from functools import *
 from itertools import *
-from itertools import combinations, product
 from math import sqrt
 
 import numpy as np
 import pandas as pd
-
-import matplotlib.pyplot as plt
 
 
 def cartesian_to_array(x, y, shape):
